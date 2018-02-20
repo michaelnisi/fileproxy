@@ -17,6 +17,8 @@ public protocol FileProxy: URLSessionDelegate {
   /// The background session to use.
   var session: URLSession { get }
 
+  // TODO: var target: URL { get }
+
   /// Locates the file at `url` and returns its file locator. If the file is
   /// is not locally available, in the documents directory, a background
   /// download is started. If the background download finishes while the
@@ -33,12 +35,40 @@ public protocol FileProxy: URLSessionDelegate {
   ) -> FileLocator
 }
 
+/// MARK: - Hashing
+
+extension FileProxy {
+
+  private static func djb2Hash(string: String) -> Int {
+    let unicodeScalars = string.unicodeScalars.map { $0.value }
+    return Int(unicodeScalars.reduce(5381) {
+      ($0 << 5) &+ $0 &+ Int($1)
+    })
+  }
+
+  /// Returns unsafe hash of `url`.
+  static func hash(url: RemoteURL) -> String {
+    let str = url.absoluteString
+    let hash = djb2Hash(string: str)
+    return String(hash)
+  }
+
+}
+
 extension FileProxy {
 
   func locate(url: RemoteURL,
     downloadComplete: ((_ locator: FileLocator, _ error: Error?) -> Void)? = nil
   ) -> FileLocator {
-    let uid = UUID().uuidString
+    let uid = Self.hash(url: url)
+
+    if #available(macOS 10.12, *) {
+      let fm = FileManager.default
+      let documents = fm.temporaryDirectory // obviously not
+      let localURL = URL(string: uid, relativeTo: documents)
+      dump(localURL)
+    }
+
     let loc = FileLocator(localURL: nil, remoteURLHash: uid, remoteURL: url)
     return loc
   }

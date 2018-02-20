@@ -9,7 +9,7 @@ class fileproxyTests: XCTestCase {
 
   func testLocate() {
     let proxy = Foxy()
-    let url = URL(string: "http://abc.de")!
+    let url = URL(string: "http://abc.de/resources/file")!
     let loc = proxy.locate(url: url)
     dump(loc)
     XCTAssertEqual(loc.remoteURL, url)
