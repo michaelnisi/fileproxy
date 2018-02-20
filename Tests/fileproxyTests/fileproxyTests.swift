@@ -2,15 +2,21 @@ import XCTest
 @testable import fileproxy
 
 class fileproxyTests: XCTestCase {
-    func testExample() {
-        // This is an example of a functional test case.
-        // Use XCTAssert and related functions to verify your tests produce the correct
-        // results.
-        XCTAssertEqual(fileproxy().text, "Hello, World!")
-    }
 
+  func testInit() {
+    XCTAssertNotNil(Foxy().session)
+  }
 
-    static var allTests = [
-        ("testExample", testExample),
-    ]
+  func testLocate() {
+    let proxy = Foxy()
+    let url = URL(string: "http://abc.de")!
+    let loc = proxy.locate(url: url)
+    dump(loc)
+    XCTAssertEqual(loc.remoteURL, url)
+  }
+
+  static var allTests = [
+    ("testInit", testInit),
+    ("testLocate", testLocate),
+  ]
 }

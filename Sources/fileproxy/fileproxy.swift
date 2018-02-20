@@ -36,9 +36,10 @@ public protocol FileProxy: URLSessionDelegate {
 extension FileProxy {
 
   func locate(url: RemoteURL,
-    downloadComplete: ((_ locator: FileLocator, _ error: Error?) -> Void)?
+    downloadComplete: ((_ locator: FileLocator, _ error: Error?) -> Void)? = nil
   ) -> FileLocator {
-    let loc = FileLocator(localURL: nil, remoteURLHash: UUID().uuidString, remoteURL: url)
+    let uid = UUID().uuidString
+    let loc = FileLocator(localURL: nil, remoteURLHash: uid, remoteURL: url)
     return loc
   }
 
