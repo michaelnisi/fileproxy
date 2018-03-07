@@ -203,7 +203,8 @@ extension FileProxy: FileProxying {
     }
   }
 
-  @discardableResult public func url(
+  @discardableResult
+  public func url(
     for url: URL,
     with configuration: DownloadTaskConfiguration? = nil
   ) throws -> URL {
@@ -291,5 +292,10 @@ extension FileProxy: FileProxying {
     }
 
     return url
+  }
+  
+  @discardableResult
+  public func url(for url: URL) throws -> URL {
+    return try self.url(for: url, with: nil)
   }
 }
