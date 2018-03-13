@@ -121,7 +121,7 @@ extension FileProxy: URLSessionDownloadDelegate {
 
     guard (200...299).contains(res.statusCode) else {
       if #available(iOS 10.0, macOS 10.13, *) {
-        os_log("unexpected response: %@", log: log, res.statusCode)
+        os_log("unexpected response: %i", log: log, res.statusCode)
       }
       delegate?.proxy(self, url: origin,
         failedToDownloadWith: FileProxyError.http(res.statusCode))
