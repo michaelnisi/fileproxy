@@ -29,9 +29,11 @@ public final class FileProxy: NSObject {
     self.delegate = delegate
     self._bgSession = backgroundSession
   }
-
+  
+  fileprivate var isInvalidated = false
+  
   deinit {
-    _bgSession?.finishTasksAndInvalidate()
+    precondition(isInvalidated)
   }
 
   public var backgroundCompletionHandler: (() -> Void)?
@@ -44,6 +46,9 @@ extension FileProxy: URLSessionDelegate {
 
   #if(iOS)
   public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+    guard !isInvalidated else {
+      return
+    }
     DispatchQueue.main.async { [weak self] in
       self?.backgroundCompletionHandler?()
     }
@@ -61,6 +66,9 @@ extension FileProxy: URLSessionTaskDelegate {
     task: URLSessionTask,
     didCompleteWithError error: Error?
   ) {
+    guard !isInvalidated else {
+      return
+    }
     let url = task.originalRequest?.url
     delegate?.proxy(self, url: url, didCompleteWithError: error)
   }
@@ -158,8 +166,24 @@ extension FileProxy: URLSessionDownloadDelegate {
 // MARK: - FileProxying
 
 extension FileProxy: FileProxying {
-
+  
+  public func invalidate(finishing: Bool = true) {
+    if finishing {
+      if #available(iOS 10.0, macOS 10.13, *) {
+        os_log("finishing and invalidating", log: log, type: .debug)
+      }
+      _bgSession?.finishTasksAndInvalidate()
+    } else {
+      if #available(iOS 10.0, macOS 10.13, *) {
+        os_log("invalidating and cancelling", log: log, type: .debug)
+      }
+      _bgSession?.invalidateAndCancel()
+    }
+    isInvalidated = true
+  }
+  
   private func makeBackgroundSession() -> URLSession {
+    precondition(!isInvalidated)
     let conf = URLSessionConfiguration.background(withIdentifier: identifier)
     conf.isDiscretionary = true
     return URLSession(configuration: conf, delegate: self, delegateQueue: nil)

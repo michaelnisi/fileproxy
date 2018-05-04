@@ -76,6 +76,8 @@ class fileproxyTests: XCTestCase {
       }
       let localURL = try! proxy.url(for: url)
       XCTAssert(localURL.isFileURL)
+
+      proxy.invalidate()
     }
   }
 

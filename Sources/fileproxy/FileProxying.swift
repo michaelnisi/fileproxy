@@ -51,6 +51,12 @@ public protocol FileProxying {
   /// Removes the local item for `url`.
   func removeItem(for url: URL) throws
 
+  /// Invalidates this file proxy.
+  ///
+  /// - Parameters:
+  ///   - finishing: Pass `true` to finish current download tasks.
+  func invalidate(finishing: Bool)
+
 }
 
 extension FileProxying {
