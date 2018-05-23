@@ -32,7 +32,8 @@ public protocol FileProxying {
   /// Identifies this proxy.
   var identifier: String { get }
 
-  /// The background download completion handler.
+  /// The background download completion handler, submitted to the main queue,
+  /// when all events have been handled or the session did become invalid.
   var backgroundCompletionHandler: (() -> Void)? { get set }
 
   /// The maximum size of the target directory in bytes. If the target

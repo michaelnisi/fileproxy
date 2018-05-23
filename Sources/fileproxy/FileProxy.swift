@@ -66,6 +66,8 @@ extension FileProxy: URLSessionDelegate {
     dispatch()
   }
   
+  // Handling authentication challenges on the task level, not here, on the
+  // session level.
 }
 
 // MARK: - URLSessionTaskDelegate
