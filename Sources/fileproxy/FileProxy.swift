@@ -43,17 +43,28 @@ public final class FileProxy: NSObject {
 // MARK: - URLSessionDelegate
 
 extension FileProxy: URLSessionDelegate {
+  
+  private func dispatch() {
+    DispatchQueue.main.async { [weak self] in
+      self?.backgroundCompletionHandler?()
+      self?.backgroundCompletionHandler = nil
+    }
+  }
 
   #if(iOS)
   public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+    os_log("session did finish", log: log, type: .debug)
     guard !isInvalidated else {
       return
     }
-    DispatchQueue.main.async { [weak self] in
-      self?.backgroundCompletionHandler?()
-    }
+    dispatch()
   }
   #endif
+  
+  public func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
+    os_log("session did become invalid", log: log, type: .debug)
+    dispatch()
+  }
   
 }
 
@@ -232,6 +243,8 @@ extension FileProxy: FileProxying {
     for url: URL,
     with configuration: DownloadTaskConfiguration? = nil
   ) throws -> URL {
+    dispatchPrecondition(condition: .notOnQueue(.main))
+    
     guard let localURL = FileLocator(identifier: identifier, url: url)?.localURL else {
       throw FileProxyError.invalidURL(url)
     }
@@ -258,7 +271,6 @@ extension FileProxy: FileProxying {
         os_log("not reachable: %{public}@", log: log, type: .debug,
                localURL as CVarArg)
       }
-
     }
 
     try checkSize()
