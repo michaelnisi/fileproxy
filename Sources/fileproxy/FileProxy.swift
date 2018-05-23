@@ -44,30 +44,40 @@ public final class FileProxy: NSObject {
 
 extension FileProxy: URLSessionDelegate {
   
-  private func dispatch() {
-    DispatchQueue.main.async { [weak self] in
-      self?.backgroundCompletionHandler?()
-      self?.backgroundCompletionHandler = nil
-    }
+  /// Executes background completion handler once.
+  private func complete() {
+    backgroundCompletionHandler?()
+    backgroundCompletionHandler = nil
   }
 
   #if(iOS)
-  public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
-    os_log("session did finish", log: log, type: .debug)
+  public func urlSessionDidFinishEvents(
+    forBackgroundURLSession session: URLSession
+  ) {
+    os_log("session finished events", log: log, type: .debug)
     guard !isInvalidated else {
       return
     }
-    dispatch()
+    complete()
   }
   #endif
   
-  public func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
-    os_log("session did become invalid", log: log, type: .debug)
-    dispatch()
+  public func urlSession(
+    _ session: URLSession,
+    didBecomeInvalidWithError error: Error?
+  ) {
+    if let er = error {
+      os_log("invalid session with error: %{public}@", log: log, er as CVarArg)
+    } else {
+      os_log("invalid session", log: log)
+    }
+    complete()
+    isInvalidated = true
   }
   
   // Handling authentication challenges on the task level, not here, on the
   // session level.
+  
 }
 
 // MARK: - URLSessionTaskDelegate
@@ -192,7 +202,6 @@ extension FileProxy: FileProxying {
       }
       _bgSession?.invalidateAndCancel()
     }
-    isInvalidated = true
   }
   
   private func makeBackgroundSession() -> URLSession {
