@@ -29,9 +29,9 @@ public final class FileProxy: NSObject {
     self.delegate = delegate
     self._bgSession = backgroundSession
   }
-  
+
   fileprivate var isInvalidated = false
-  
+
   deinit {
     precondition(isInvalidated)
   }
@@ -43,7 +43,7 @@ public final class FileProxy: NSObject {
 // MARK: - URLSessionDelegate
 
 extension FileProxy: URLSessionDelegate {
-  
+
   /// Executes background completion handler once.
   private func complete() {
     backgroundCompletionHandler?()
@@ -54,30 +54,31 @@ extension FileProxy: URLSessionDelegate {
   public func urlSessionDidFinishEvents(
     forBackgroundURLSession session: URLSession
   ) {
-    os_log("session finished events", log: log, type: .debug)
-    guard !isInvalidated else {
-      return
+    if #available(iOS 11.0, macOS 10.13, *) {
+      os_log("session finished events", log: log, type: .debug)
     }
     complete()
   }
   #endif
-  
+
   public func urlSession(
     _ session: URLSession,
     didBecomeInvalidWithError error: Error?
   ) {
-    if let er = error {
-      os_log("invalid session with error: %{public}@", log: log, er as CVarArg)
-    } else {
-      os_log("invalid session", log: log)
+    if #available(iOS 11.0, macOS 10.13, *) {
+      if let er = error {
+        os_log("invalid session with error: %{public}@", log: log, er as CVarArg)
+      } else {
+        os_log("invalid session", log: log)
+      }
     }
-    complete()
+    complete() // not sure if this is necessary
     isInvalidated = true
   }
-  
+
   // Handling authentication challenges on the task level, not here, on the
   // session level.
-  
+
 }
 
 // MARK: - URLSessionTaskDelegate
@@ -95,7 +96,7 @@ extension FileProxy: URLSessionTaskDelegate {
     let url = task.originalRequest?.url
     delegate?.proxy(self, url: url, didCompleteWithError: error)
   }
-  
+
   public func urlSession(
     _ session: URLSession,
     task: URLSessionTask,
@@ -113,7 +114,7 @@ extension FileProxy: URLSessionTaskDelegate {
 // MARK: - URLSessionDownloadDelegate
 
 extension FileProxy: URLSessionDownloadDelegate {
-  
+
   public func urlSession(
     _ session: URLSession,
     downloadTask: URLSessionDownloadTask,
@@ -129,7 +130,7 @@ extension FileProxy: URLSessionDownloadDelegate {
       totalBytesExpectedToWrite: totalBytesExpectedToWrite
     )
   }
-  
+
   public func urlSession(
     _ session: URLSession,
     downloadTask: URLSessionDownloadTask,
@@ -189,7 +190,7 @@ extension FileProxy: URLSessionDownloadDelegate {
 // MARK: - FileProxying
 
 extension FileProxy: FileProxying {
-  
+
   public func invalidate(finishing: Bool = true) {
     if finishing {
       if #available(iOS 10.0, macOS 10.13, *) {
@@ -203,7 +204,7 @@ extension FileProxy: FileProxying {
       _bgSession?.invalidateAndCancel()
     }
   }
-  
+
   private func makeBackgroundSession() -> URLSession {
     precondition(!isInvalidated)
     let conf = URLSessionConfiguration.background(withIdentifier: identifier)
@@ -254,9 +255,10 @@ extension FileProxy: FileProxying {
     for url: URL,
     with configuration: DownloadTaskConfiguration? = nil
   ) throws -> URL {
-    dispatchPrecondition(condition: .notOnQueue(.main))
-    
-    guard let localURL = FileLocator(identifier: identifier, url: url)?.localURL else {
+    // dispatchPrecondition(condition: .notOnQueue(.main))
+
+    guard let localURL = FileLocator(
+      identifier: identifier, url: url)?.localURL else {
       throw FileProxyError.invalidURL(url)
     }
 
@@ -340,7 +342,7 @@ extension FileProxy: FileProxying {
 
     return url
   }
-  
+
   @discardableResult
   public func url(for url: URL) throws -> URL {
     return try self.url(for: url, with: nil)
