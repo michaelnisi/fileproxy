@@ -9,25 +9,32 @@ import Foundation
 import os.log
 
 @available(iOS 10.0, macOS 10.13, *)
-private let log = OSLog(subsystem: "ink.codes.fileproxy", category: "fs")
+private let log = OSLog(subsystem: "ink.codes.fileproxy", category: "files")
 
 public final class FileProxy: NSObject {
+
+  typealias SessionIdentifier = String
 
   public let identifier: String
   public let maxBytes: Int
   public weak var delegate: FileProxyDelegate?
-  private var _bgSession: URLSession?
+
+  private var sessions = [SessionIdentifier: URLSession]()
+  private var handlers = [SessionIdentifier: (() -> Void)]()
+
+  private var current: SessionIdentifier?
 
   public init(
     identifier: String = "ink.codes.fileproxy",
     maxBytes: Int = 256 * 1024 * 1024,
-    delegate: FileProxyDelegate? = nil,
-    backgroundSession: URLSession? = nil
+    delegate: FileProxyDelegate? = nil
   ) {
+    if #available(iOS 10.0, macOS 10.13, *) {
+      os_log("init: %{public}@", log: log, type: .debug, identifier)
+    }
     self.identifier = identifier
     self.maxBytes = maxBytes
     self.delegate = delegate
-    self._bgSession = backgroundSession
   }
 
   fileprivate var isInvalidated = false
@@ -36,7 +43,16 @@ public final class FileProxy: NSObject {
     precondition(isInvalidated)
   }
 
-  public var backgroundCompletionHandler: (() -> Void)?
+  private func makeBackgroundSession(identifier: SessionIdentifier) -> URLSession {
+    precondition(!isInvalidated)
+    if #available(iOS 10.0, macOS 10.13, *) {
+      os_log("creating a new session: %{public}@", log: log, type: .debug,
+             identifier as CVarArg)
+    }
+    let conf = URLSessionConfiguration.background(withIdentifier: identifier)
+    conf.isDiscretionary = true
+    return URLSession(configuration: conf, delegate: self, delegateQueue: nil)
+  }
 
 }
 
@@ -44,21 +60,45 @@ public final class FileProxy: NSObject {
 
 extension FileProxy: URLSessionDelegate {
 
-  /// Executes background completion handler once.
-  private func complete() {
-    backgroundCompletionHandler?()
-    backgroundCompletionHandler = nil
+  private func completeSession(matching identifier: SessionIdentifier) {
+    if #available(iOS 11.0, macOS 10.13, *) {
+      os_log("completing session: %{public}@",
+             log: log, type: .debug, identifier)
+    }
+    
+    guard let cb = handlers.removeValue(forKey: identifier) else {
+      if #available(iOS 11.0, macOS 10.13, *) {
+        os_log("no handler: %{public}@", log: log, type: .debug, identifier)
+      }
+      return
+    }
+
+    cb()
+
+    precondition(sessions.removeValue(forKey: identifier) != nil)
   }
 
-  #if(iOS)
+  #if os(iOS)
+  
   public func urlSessionDidFinishEvents(
     forBackgroundURLSession session: URLSession
   ) {
     if #available(iOS 11.0, macOS 10.13, *) {
-      os_log("session finished events", log: log, type: .debug)
+      os_log("session did finish events: %{public}@",
+             log: log, type: .debug, session.configuration.identifier!)
     }
-    complete()
+    
+    guard let sid = session.configuration.identifier else {
+      if #available(iOS 11.0, macOS 10.13, *) {
+        os_log("invalidating session", log: log, type: .debug)
+      }
+      session.invalidateAndCancel()
+      return
+    }
+    
+    completeSession(matching: sid)
   }
+  
   #endif
 
   public func urlSession(
@@ -67,12 +107,16 @@ extension FileProxy: URLSessionDelegate {
   ) {
     if #available(iOS 11.0, macOS 10.13, *) {
       if let er = error {
-        os_log("invalid session with error: %{public}@", log: log, er as CVarArg)
+        os_log("invalid session with error: %{public}@",
+               log: log, type: .error, er as CVarArg)
       } else {
-        os_log("invalid session", log: log)
+        os_log("invalid session", log: log, type: .error)
       }
     }
-    complete() // not sure if this is necessary
+    guard let sid = session.configuration.identifier else {
+      fatalError("missing session identifier")
+    }
+    completeSession(matching: sid)
     isInvalidated = true
   }
 
@@ -176,7 +220,6 @@ extension FileProxy: URLSessionDownloadDelegate {
 
     do {
       try FileManager.default.moveItem(at: location, to: savedURL)
-
       delegate?.proxy(self, url: origin, successfullyDownloadedTo: savedURL)
     } catch {
       delegate?.proxy(self, url: origin, failedToDownloadWith: error)
@@ -191,36 +234,68 @@ extension FileProxy: URLSessionDownloadDelegate {
 
 extension FileProxy: FileProxying {
 
-  public func invalidate(finishing: Bool = true) {
-    if finishing {
-      if #available(iOS 10.0, macOS 10.13, *) {
-        os_log("finishing and invalidating", log: log, type: .debug)
+  public func handleEventsForBackgroundURLSession(
+    identifier: String,
+    completionHandler: @escaping () -> Void
+  ) {
+    let session: URLSession = {
+      guard let id = current, let s = sessions[id] else {
+        let newSession = makeBackgroundSession(identifier: identifier)
+        sessions[identifier] = newSession
+        return newSession
       }
-      _bgSession?.finishTasksAndInvalidate()
-    } else {
-      if #available(iOS 10.0, macOS 10.13, *) {
-        os_log("invalidating and cancelling", log: log, type: .debug)
+      return s
+    }()
+
+    guard handlers.removeValue(forKey: identifier) == nil else {
+      fatalError("unexpected handler")
+    }
+
+    handlers[identifier] = completionHandler
+
+    // If all goes well, this handler is a NOP, but when we haven’t received
+    // any events after 10 seconds, we try invalidating the session, a shot in
+    // in the dark. If that doesn’t eventually release the handler, within
+    // another three seconds, although the callback should fire immediately,
+    // we give up and trap.
+
+    DispatchQueue.global().asyncAfter(deadline: .now() + 10) { [weak self] in
+      guard self?.handlers[identifier] == nil else {
+        if #available(iOS 10.0, macOS 10.13, *) {
+          os_log("invalidating session after timeout: %{public}@",
+                 log: log, type: .debug, identifier)
+        }
+
+        session.invalidateAndCancel()
+
+        return DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
+          guard self?.handlers[identifier] == nil else {
+            fatalError("clueless")
+          }
+        }
       }
-      _bgSession?.invalidateAndCancel()
+
+      // NOP after 10 seconds.
     }
   }
 
-  private func makeBackgroundSession() -> URLSession {
-    precondition(!isInvalidated)
-    let conf = URLSessionConfiguration.background(withIdentifier: identifier)
-    conf.isDiscretionary = true
-    return URLSession(configuration: conf, delegate: self, delegateQueue: nil)
-  }
-
-  private var bgSession: URLSession {
-    set { _bgSession = newValue }
-
-    get {
-      guard let s = _bgSession else {
-        _bgSession = makeBackgroundSession()
-        return _bgSession!
+  public func invalidate(finishing: Bool = true) {
+    if finishing {
+      for session in sessions.values {
+        if #available(iOS 10.0, macOS 10.13, *) {
+          os_log("finishing and invalidating: %{public}@",
+                 log: log, type: .debug, session.configuration.identifier!)
+        }
+        session.finishTasksAndInvalidate()
       }
-      return s
+    } else {
+      for session in sessions.values {
+        if #available(iOS 10.0, macOS 10.13, *) {
+          os_log("invalidating and cancelling: %{public}@",
+                 log: log, type: .debug, session.configuration.identifier!)
+        }
+        session.invalidateAndCancel()
+      }
     }
   }
 
@@ -248,6 +323,39 @@ extension FileProxy: FileProxying {
     guard space > 0 else {
       throw FileProxyError.maxBytesExceeded(space)
     }
+  }
+
+  private func hasTasks(matching url: URL, hasBlock: @escaping (Bool) -> Void) {
+    func check(sessions: [URLSession], index: Int, found: Bool) {
+      guard !sessions.isEmpty, index >= 0, found == false else {
+        return hasBlock(found)
+      }
+
+      let session = sessions[index]
+
+      session.getTasksWithCompletionHandler { _, _, tasks in
+        guard !tasks.isEmpty, let task = tasks.first (where:
+          { $0.originalRequest?.url == url }
+        ) else {
+          return check(sessions: sessions, index: index - 1, found: false)
+        }
+
+        if #available(iOS 11.0, macOS 10.13, *) {
+          os_log("""
+          in-flight: {
+            %{public}@,
+            %{public}@",
+          }
+          """, log: log, type: .debug,
+               url as CVarArg, task.progress as CVarArg)
+        }
+
+        return check(sessions: sessions, index: index - 1, found: true)
+      }
+    }
+
+    let last = max(0, sessions.count - 1)
+    check(sessions: Array(sessions.values), index: last, found: false)
   }
 
   @discardableResult
@@ -288,9 +396,18 @@ extension FileProxy: FileProxying {
 
     try checkSize()
 
-    let session = self.bgSession
-
     func go() {
+      let session: URLSession = {
+        guard let id = current, let s = sessions[id] else {
+          let newID = "\(identifier)-\(UUID().uuidString)"
+          let newSession = makeBackgroundSession(identifier: newID)
+          sessions[newID] = newSession
+          current = newID
+          return newSession
+        }
+        return s
+      }()
+
       let task = session.downloadTask(with: url)
 
       if #available(iOS 11.0, macOS 10.13, *) {
@@ -318,26 +435,8 @@ extension FileProxy: FileProxying {
     }
 
     // Guarding against URLs already in-flight.
-    session.getTasksWithCompletionHandler { _, _, tasks in
-      guard !tasks.isEmpty else {
-        return go()
-      }
-
-      guard let task = tasks.first (where:
-        { $0.originalRequest?.url == url }
-      ) else {
-        return go()
-      }
-
-      if #available(iOS 11.0, macOS 10.13, *) {
-        os_log("""
-          in-flight: {
-            %{public}@,
-            %{public}@",
-          }
-          """, log: log, type: .debug,
-               url as CVarArg, task.progress as CVarArg)
-      }
+    hasTasks(matching: url) { yes in
+      if !yes { go() }
     }
 
     return url

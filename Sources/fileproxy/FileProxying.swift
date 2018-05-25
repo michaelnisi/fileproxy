@@ -32,9 +32,6 @@ public protocol FileProxying {
   /// Identifies this proxy.
   var identifier: String { get }
 
-  /// The background download completion handler.
-  var backgroundCompletionHandler: (() -> Void)? { get set }
-
   /// The maximum size of the target directory in bytes. If the target
   /// directory's size exceeds this maximum, downloaded files are removed,
   /// oldest first.
@@ -42,6 +39,12 @@ public protocol FileProxying {
 
   /// A callback delegate.
   var delegate: FileProxyDelegate? { get set }
+  
+  /// Handles events for background URL session matching `identifier`.
+  func handleEventsForBackgroundURLSession(
+    identifier: String,
+    completionHandler: @escaping () -> Void
+  )
 
   /// Returns proxied URL for `url` and, if the file doesn’t exist locally,
   /// asks the system to download the file in the background. The proxied URL
