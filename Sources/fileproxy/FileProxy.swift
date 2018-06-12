@@ -65,7 +65,7 @@ extension FileProxy: URLSessionDelegate {
       os_log("completing session: %{public}@",
              log: log, type: .debug, identifier)
     }
-    
+
     guard let cb = handlers.removeValue(forKey: identifier) else {
       if #available(iOS 11.0, macOS 10.13, *) {
         os_log("no handler: %{public}@", log: log, type: .debug, identifier)
@@ -79,7 +79,7 @@ extension FileProxy: URLSessionDelegate {
   }
 
   #if os(iOS)
-  
+
   public func urlSessionDidFinishEvents(
     forBackgroundURLSession session: URLSession
   ) {
@@ -87,7 +87,7 @@ extension FileProxy: URLSessionDelegate {
       os_log("session did finish events: %{public}@",
              log: log, type: .debug, session.configuration.identifier!)
     }
-    
+
     guard let sid = session.configuration.identifier else {
       if #available(iOS 11.0, macOS 10.13, *) {
         os_log("invalidating session", log: log, type: .debug)
@@ -95,10 +95,10 @@ extension FileProxy: URLSessionDelegate {
       session.invalidateAndCancel()
       return
     }
-    
+
     completeSession(matching: sid)
   }
-  
+
   #endif
 
   public func urlSession(
@@ -238,7 +238,7 @@ extension FileProxy: FileProxying {
     identifier: String,
     completionHandler: @escaping () -> Void
   ) {
-    let session: URLSession = {
+    let _: URLSession = {
       guard let id = current, let s = sessions[id] else {
         let newSession = makeBackgroundSession(identifier: identifier)
         sessions[identifier] = newSession
@@ -248,35 +248,10 @@ extension FileProxy: FileProxying {
     }()
 
     guard handlers.removeValue(forKey: identifier) == nil else {
-      fatalError("unexpected handler")
+      fatalError("unexpectedly found existing handler: \(identifier)")
     }
 
     handlers[identifier] = completionHandler
-
-    // If all goes well, this handler is a NOP, but when we haven’t received
-    // any events after 10 seconds, we try invalidating the session, a shot in
-    // in the dark. If that doesn’t eventually release the handler, within
-    // another three seconds, although the callback should fire immediately,
-    // we give up and trap.
-
-    DispatchQueue.global().asyncAfter(deadline: .now() + 10) { [weak self] in
-      guard self?.handlers[identifier] == nil else {
-        if #available(iOS 10.0, macOS 10.13, *) {
-          os_log("invalidating session after timeout: %{public}@",
-                 log: log, type: .debug, identifier)
-        }
-
-        session.invalidateAndCancel()
-
-        return DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
-          guard self?.handlers[identifier] == nil else {
-            fatalError("clueless")
-          }
-        }
-      }
-
-      // NOP after 10 seconds.
-    }
   }
 
   public func invalidate(finishing: Bool = true) {
