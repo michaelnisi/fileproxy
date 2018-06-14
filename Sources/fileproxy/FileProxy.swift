@@ -300,30 +300,29 @@ extension FileProxy: FileProxying {
     }
   }
   
-  private func tasks(
+  private static func tasks(
+    in sessions: [URLSession],
     matching url: URL,
-    tasksBlock: @escaping ([URLSessionDownloadTask]
-  ) -> Void) {
-    func find(sessions: [URLSession], index: Int, found: [URLSessionDownloadTask]) {
-      guard !sessions.isEmpty, index >= 0 else {
-        return tasksBlock(found)
+    completion: @escaping ([URLSessionDownloadTask]) -> Void)
+  {
+    func find(_ sessions: [URLSession], _ acc: [URLSessionDownloadTask] = []) {
+      guard let session = sessions.first else {
+        completion(acc)
+        return
       }
       
-      let session = sessions[index]
-      
       session.getTasksWithCompletionHandler { _, _, tasks in
-        find(sessions: sessions, index: index - 1, found:
-          found + tasks.filter { $0.originalRequest?.url == url }
-        )
+        find(Array(sessions.dropFirst()), acc + tasks.filter {
+          $0.originalRequest?.url == url
+        })
       }
     }
     
-    let last = max(0, sessions.count - 1)
-    find(sessions: Array(sessions.values), index: last, found: [])
+    find(sessions)
   }
   
   public func cancelDownloads(matching url: URL) {
-    tasks(matching: url) { tasks in
+    FileProxy.tasks(in: Array(sessions.values), matching: url) { tasks in
       for task in tasks {
         task.cancel()
       }
@@ -346,7 +345,7 @@ extension FileProxy: FileProxying {
   }
   
   private func hasTasks(matching url: URL, hasBlock: @escaping (Bool) -> Void) {
-    tasks(matching: url) { tasks in
+    FileProxy.tasks(in: Array(sessions.values), matching: url) { tasks in
       hasBlock(!tasks.isEmpty)
     }
   }
