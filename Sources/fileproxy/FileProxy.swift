@@ -299,38 +299,56 @@ extension FileProxy: FileProxying {
       throw FileProxyError.maxBytesExceeded(space)
     }
   }
-
-  private func hasTasks(matching url: URL, hasBlock: @escaping (Bool) -> Void) {
-    func check(sessions: [URLSession], index: Int, found: Bool) {
-      guard !sessions.isEmpty, index >= 0, found == false else {
-        return hasBlock(found)
+  
+  private func tasks(
+    matching url: URL,
+    tasksBlock: @escaping ([URLSessionDownloadTask]
+  ) -> Void) {
+    func find(sessions: [URLSession], index: Int, found: [URLSessionDownloadTask]) {
+      guard !sessions.isEmpty, index >= 0 else {
+        return tasksBlock(found)
       }
-
+      
       let session = sessions[index]
-
+      
       session.getTasksWithCompletionHandler { _, _, tasks in
-        guard !tasks.isEmpty, let task = tasks.first (where:
-          { $0.originalRequest?.url == url }
-        ) else {
-          return check(sessions: sessions, index: index - 1, found: false)
-        }
-
-        if #available(iOS 11.0, macOS 10.13, *) {
-          os_log("""
-          in-flight: {
-            %{public}@,
-            %{public}@",
-          }
-          """, log: log, type: .debug,
-               url as CVarArg, task.progress as CVarArg)
-        }
-
-        return check(sessions: sessions, index: index - 1, found: true)
+        find(sessions: sessions, index: index - 1, found:
+          found + tasks.filter { $0.originalRequest?.url == url }
+        )
       }
     }
-
+    
     let last = max(0, sessions.count - 1)
-    check(sessions: Array(sessions.values), index: last, found: false)
+    find(sessions: Array(sessions.values), index: last, found: [])
+  }
+  
+  public func cancelDownloads(matching url: URL) {
+    tasks(matching: url) { tasks in
+      for task in tasks {
+        task.cancel()
+      }
+    }
+  }
+
+  public func removeFile(matching url: URL) -> URL? {
+    guard let localURL = FileLocator(
+      identifier: identifier, url: url)?.localURL else {
+      return nil
+    }
+    
+    do {
+      try FileManager.default.removeItem(at: localURL)
+    } catch {
+      return nil
+    }
+    
+    return localURL
+  }
+  
+  private func hasTasks(matching url: URL, hasBlock: @escaping (Bool) -> Void) {
+    tasks(matching: url) { tasks in
+      hasBlock(!tasks.isEmpty)
+    }
   }
 
   @discardableResult

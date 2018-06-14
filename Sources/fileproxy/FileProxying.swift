@@ -51,8 +51,11 @@ public protocol FileProxying {
   /// is either the local file URL or the original remote URL.
   @discardableResult func url(for url: URL, with: DownloadTaskConfiguration?) throws -> URL
 
-  /// Removes the local item for `url`.
-  func removeItem(for url: URL) throws
+  /// Removes local file matching `url`.
+  func removeFile(matching url: URL) -> URL?
+  
+  /// Cancels download tasks matching `url`.
+  func cancelDownloads(matching url: URL)
 
   /// Invalidates this file proxy.
   ///
@@ -61,17 +64,5 @@ public protocol FileProxying {
   func invalidate(finishing: Bool)
 
 }
-
-extension FileProxying {
-
-  public func removeItem(for url: URL) throws {
-    guard let localURL = FileLocator(identifier: identifier, url: url)?.localURL else {
-      fatalError("unhandled error")
-    }
-    try FileManager.default.removeItem(at: localURL)
-  }
-
-}
-
 
 
