@@ -39,21 +39,51 @@ public protocol FileProxying {
 
   /// A callback delegate.
   var delegate: FileProxyDelegate? { get set }
-  
+
   /// Handles events for background URL session matching `identifier`.
   func handleEventsForBackgroundURLSession(
     identifier: String,
     completionHandler: @escaping () -> Void
   )
 
-  /// Returns proxied URL for `url` and, if the file doesn’t exist locally,
+  /// Returns a local file URL matching remote `url` if a file has been
+  /// downloaded or `nil` if not.
+  func localURL(matching url: URL) throws -> URL?
+
+  /// Returns proxied URL matching `url` and if the file doesn’t exist locally,
   /// asks the system to download the file in the background. The proxied URL
   /// is either the local file URL or the original remote URL.
-  @discardableResult func url(for url: URL, with: DownloadTaskConfiguration?) throws -> URL
+  ///
+  /// - Parameters:
+  ///   - url: The remote URL to proxy.
+  ///   - downloading: Set to `false` to prevent automatic downloading.
+  ///   - configuration: An optional download task configuration.
+  ///
+  /// - Throws: Invalid URLs or file IO errors could produce errors.
+  ///
+  /// - Returns: A local file URL or the original remote URL.
+  @discardableResult func url(
+    matching url: URL,
+    start downloading: Bool,
+    using configuration: DownloadTaskConfiguration?
+  ) throws -> URL
+  
+  @discardableResult func url(
+    matching url: URL,
+    using configuration: DownloadTaskConfiguration?
+  ) throws -> URL
+  
+  @discardableResult func url(matching url: URL) throws -> URL
 
   /// Removes local file matching `url`.
   func removeFile(matching url: URL) -> URL?
-  
+
+  /// Removes all locals files that have been downloaded.
+  func removeAll() throws
+
+  /// Removes all local files except the files matching `urls`.
+  func removeAll(keeping urls: [URL]) throws
+
   /// Cancels download tasks matching `url`.
   func cancelDownloads(matching url: URL)
 

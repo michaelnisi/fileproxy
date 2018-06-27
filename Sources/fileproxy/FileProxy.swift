@@ -299,7 +299,7 @@ extension FileProxy: FileProxying {
       throw FileProxyError.maxBytesExceeded(space)
     }
   }
-  
+
   private static func tasks(
     in sessions: [URLSession],
     matching url: URL,
@@ -310,17 +310,17 @@ extension FileProxy: FileProxying {
         completion(acc)
         return
       }
-      
+
       session.getTasksWithCompletionHandler { _, _, tasks in
         find(Array(sessions.dropFirst()), acc + tasks.filter {
           $0.originalRequest?.url == url
         })
       }
     }
-    
+
     find(sessions)
   }
-  
+
   public func cancelDownloads(matching url: URL) {
     FileProxy.tasks(in: Array(sessions.values), matching: url) { tasks in
       for task in tasks {
@@ -329,39 +329,60 @@ extension FileProxy: FileProxying {
     }
   }
 
+  private func remove(_ url: URL) throws {
+    let fm = FileManager.default
+
+    let attributes = try fm.attributesOfItem(atPath: url.path)
+
+    guard
+      let d = attributes[FileAttributeKey.modificationDate] as? Date,
+      (delegate?.validate(self, removing: url, modified: d))! else {
+      return
+    }
+
+    try fm.removeItem(at: url)
+  }
+
   public func removeFile(matching url: URL) -> URL? {
     guard let localURL = FileLocator(
       identifier: identifier, url: url)?.localURL else {
       return nil
     }
-    
+
     do {
-      try FileManager.default.removeItem(at: localURL)
+      try remove(localURL)
     } catch {
       return nil
     }
-    
+
     return localURL
   }
   
-  private func hasTasks(matching url: URL, hasBlock: @escaping (Bool) -> Void) {
-    FileProxy.tasks(in: Array(sessions.values), matching: url) { tasks in
-      hasBlock(!tasks.isEmpty)
+  /// Returns URLs of all cached files.
+  private func ls() throws -> [URL] {
+    let dir = try FileLocator.targetDirectory(identifier: identifier)
+    
+    return try FileManager.default.contentsOfDirectory(
+      at: dir,
+      includingPropertiesForKeys: [kCFURLIsRegularFileKey as URLResourceKey],
+      options: .skipsHiddenFiles
+    ).map { $0.standardizedFileURL }
+  }
+  
+  public func removeAll() throws {
+    for url in try ls() {
+      try remove(url)
     }
   }
-
-  @discardableResult
-  public func url(
-    for url: URL,
-    with configuration: DownloadTaskConfiguration? = nil
-  ) throws -> URL {
+  
+  public func localURL(matching url: URL) throws -> URL? {
     // dispatchPrecondition(condition: .notOnQueue(.main))
-
+    
     guard let localURL = FileLocator(
       identifier: identifier, url: url)?.localURL else {
-      throw FileProxyError.invalidURL(url)
+        throw FileProxyError.invalidURL(url)
     }
-
+    
     if #available(iOS 10.0, macOS 10.13, *) {
       os_log("""
         checking: {
@@ -370,20 +391,52 @@ extension FileProxy: FileProxying {
         }
         """, log: log, type: .debug, url as CVarArg, localURL as CVarArg)
     }
-
+    
     do {
       if try localURL.checkResourceIsReachable() {
         if #available(iOS 10.0, macOS 10.13, *) {
           os_log("reachable: %{public}@", log: log, type: .debug,
                  localURL as CVarArg)
         }
-        return localURL
+        return localURL.standardizedFileURL
       }
     } catch {
       if #available(iOS 10.0, macOS 10.13, *) {
         os_log("not reachable: %{public}@", log: log, type: .debug,
                localURL as CVarArg)
       }
+    }
+    
+    return nil
+  }
+
+  public func removeAll(keeping urls: [URL]) throws {
+    let preserved = try urls.compactMap { try localURL(matching: $0) }
+    for url in Set(try ls()).subtracting(preserved) {
+      try remove(url)
+    }
+  }
+
+  private func hasTasks(matching url: URL, hasBlock: @escaping (Bool) -> Void) {
+    FileProxy.tasks(in: Array(sessions.values), matching: url) { tasks in
+      hasBlock(!tasks.isEmpty)
+    }
+  }
+
+  @discardableResult
+  public func url(
+    matching url: URL,
+    start downloading: Bool = true,
+    using configuration: DownloadTaskConfiguration? = nil
+  ) throws -> URL {
+    // dispatchPrecondition(condition: .notOnQueue(.main))
+
+    if let localURL = try localURL(matching: url) {
+      return localURL
+    }
+
+    guard downloading else {
+      return url
     }
 
     try checkSize()
@@ -434,8 +487,15 @@ extension FileProxy: FileProxying {
     return url
   }
 
-  @discardableResult
-  public func url(for url: URL) throws -> URL {
-    return try self.url(for: url, with: nil)
+  public func url(
+    matching url: URL,
+    using configuration: DownloadTaskConfiguration? = nil
+  ) throws -> URL {
+    return try self.url(matching: url, start: true, using: configuration)
   }
+
+  public func url(matching url: URL) throws -> URL {
+    return try self.url(matching: url, using: nil)
+  }
+
 }

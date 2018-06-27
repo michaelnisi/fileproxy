@@ -38,22 +38,6 @@ class fileproxyTests: XCTestCase {
 
   }
 
-//  func testForUnresolvableURL() {
-//    let exp = self.expectation(description: "url")
-//    exp.assertForOverFulfill = false
-//
-//    let delegate = TestDelegate(expectation: exp)
-//    let proxy = FileProxy(delegate: delegate)
-//
-//    let url = URL(string: "http://abc.de/resources/file")!
-//    let found = try! proxy.url(for: url)
-//
-//    self.waitForExpectations(timeout: 10) { er in
-//      XCTAssertNil(er)
-//      XCTAssertEqual(found, url)
-//    }
-//  }
-
   func testForRresolvableURL() {
     let exp = self.expectation(description: "url")
     exp.assertForOverFulfill = false
@@ -62,7 +46,7 @@ class fileproxyTests: XCTestCase {
     let proxy = FileProxy(delegate: delegate)
 
     let url = URL(string: "http://localhost:8000/urandom")!
-    let found = try! proxy.url(for: url)
+    let found = try! proxy.url(matching: url)
 
     guard !found.isFileURL else {
       fatalError("unexpected state: remove donwloads before testing")
@@ -74,11 +58,18 @@ class fileproxyTests: XCTestCase {
       guard delegate.error == nil else {
         fatalError()
       }
-      let localURL = try! proxy.url(for: url)
+      let localURL = try! proxy.url(matching: url)
       XCTAssert(localURL.isFileURL)
+
+      try! proxy.removeAll()
 
       proxy.invalidate()
     }
+  }
+
+  func testRemoveAll() {
+    let proxy = FileProxy()
+    try! proxy.removeAll()
   }
 
 }

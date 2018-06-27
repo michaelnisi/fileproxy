@@ -38,10 +38,17 @@ public protocol FileProxyDelegate: class {
     _ proxy: FileProxying,
     url: URL,
     failedToDownloadWith error: Error)
+  
+  func validate(
+    _ proxy: FileProxying,
+    removing url: URL,
+    modified: Date
+  ) -> Bool
 
 }
 
-/// These defaults do nothing, just logging to the shared default log object.
+/// MARK: - Downloading
+
 extension FileProxyDelegate {
 
   public func proxy(
@@ -102,4 +109,14 @@ extension FileProxyDelegate {
 //    )
   }
 
+}
+
+// MARK: - Removing Files
+
+extension FileProxyDelegate {
+  
+  func validate(_ proxy: FileProxying, removing url: URL, modified: Date) -> Bool {
+    return false
+  }
+  
 }
