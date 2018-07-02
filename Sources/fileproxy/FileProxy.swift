@@ -169,6 +169,8 @@ extension FileProxy: URLSessionDownloadDelegate {
   }
   
   private func checkSession(configuration: URLSessionConfiguration) -> Bool {
+    precondition(sessions.contains { $0.key == configuration.identifier! })
+    
     guard configuration.allowsCellularAccess else {
       return true
     }
@@ -188,8 +190,8 @@ extension FileProxy: URLSessionDownloadDelegate {
     
     guard checkSession(configuration: session.configuration) else {
       // Invalidating is rough, the connection might not even be cellular at the
-      // moment. But for now, this makes for a good use case for checking our
-      // session invalidation handling.
+      // moment. But for now, this is good use case for checking our session
+      // invalidation handling.
       
       // TODO: Ask delegate before invalidating session
       session.invalidateAndCancel()
@@ -225,7 +227,8 @@ extension FileProxy: URLSessionDownloadDelegate {
 
     guard (200...299).contains(res.statusCode) else {
       if #available(iOS 10.0, macOS 10.13, *) {
-        os_log("unexpected response: %i", log: log, res.statusCode)
+        os_log("unexpected response: (%i, %{public}@)",
+               log: log, res.statusCode, origin as CVarArg)
       }
       delegate?.proxy(self, url: origin,
         failedToDownloadWith: FileProxyError.http(res.statusCode))
@@ -234,11 +237,11 @@ extension FileProxy: URLSessionDownloadDelegate {
 
     if #available(iOS 10.0, macOS 10.13, *) {
       os_log("""
-        moving item: {
+        moving item: (
           %{public}@,
           %{public}@,
           %{public}@
-        }
+        )
         """, log: log, type: .debug,
         origin as CVarArg,
         downloadTask as CVarArg,
@@ -261,23 +264,51 @@ extension FileProxy: URLSessionDownloadDelegate {
 // MARK: - FileProxying
 
 extension FileProxy: FileProxying {
+  
+  private func session(matching identifier: SessionIdentifier) -> URLSession? {
+    guard let identifier = current else {
+      return nil
+    }
+    
+    return sessions[identifier]
+  }
+  
+  private var currentSession: URLSession? {
+    guard let identifier = current else {
+      return nil
+    }
+    
+    return session(matching: identifier)
+  }
 
+  @discardableResult
+  private func add(
+    session: URLSession,
+    for identifier: SessionIdentifier
+  ) -> SessionIdentifier {
+    precondition(
+      sessions[identifier] == nil,
+      "unexpectedly found existing session: \(identifier)"
+    )
+    
+    sessions[identifier] = session
+    
+    return identifier
+  }
+  
   public func handleEventsForBackgroundURLSession(
     identifier: String,
     completionHandler: @escaping () -> Void
   ) {
-    let _: URLSession = {
-      guard let id = current, let s = sessions[id] else {
-        let newSession = makeBackgroundSession(identifier: identifier)
-        sessions[identifier] = newSession
-        return newSession
-      }
-      return s
-    }()
-
-    guard handlers.removeValue(forKey: identifier) == nil else {
-      fatalError("unexpectedly found existing handler: \(identifier)")
+    if session(matching: identifier) == nil {
+      let s = makeBackgroundSession(identifier: identifier)
+      add(session: s, for: identifier)
     }
+    
+    precondition(
+      handlers[identifier] == nil,
+      "unexpectedly found existing handler: \(identifier)"
+    )
 
     handlers[identifier] = completionHandler
   }
@@ -422,10 +453,10 @@ extension FileProxy: FileProxying {
     
     if #available(iOS 10.0, macOS 10.13, *) {
       os_log("""
-        checking: {
+        checking: (
           %{public}@,
           %{public}@
-        }
+        )
         """, log: log, type: .debug, url as CVarArg, localURL as CVarArg)
     }
     
@@ -480,14 +511,10 @@ extension FileProxy: FileProxying {
 
     func go() {
       let session: URLSession = {
-        guard
-          let id = current,
-          let s = sessions[id]
-          else {
+        guard let s = currentSession else {
           let newID = "\(identifier)-\(UUID().uuidString)"
           let newSession = makeBackgroundSession(identifier: newID)
-          sessions[newID] = newSession
-          current = newID
+          current = add(session: newSession, for: newID)
           return newSession
         }
         
@@ -498,8 +525,7 @@ extension FileProxy: FileProxying {
           
           let newID = "\(identifier)-\(UUID().uuidString)"
           let newSession = makeBackgroundSession(identifier: newID)
-          sessions[newID] = newSession
-          current = newID
+          current = add(session: newSession, for: newID)
           return newSession
         }
         
@@ -522,10 +548,10 @@ extension FileProxy: FileProxying {
 
       if #available(iOS 10.0, macOS 10.13, *) {
         os_log("""
-          downloading: {
+          downloading: (
             %{public}@,
             %{public}@
-          }
+          )
           """, log: log, type: .debug, url as CVarArg, task as CVarArg)
       }
 
