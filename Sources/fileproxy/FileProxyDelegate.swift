@@ -39,12 +39,28 @@ public protocol FileProxyDelegate: class {
     url: URL,
     failedToDownloadWith error: Error)
   
+  /// Validates removing of the local file matching remote `url`.
   func validate(
     _ proxy: FileProxying,
     removing url: URL,
     modified: Date
   ) -> Bool
+  
+  /// Allows to make connections over a cellular network.
+  var allowsCellularAccess: Bool { get }
+  
+  /// Gives the system control over when transfers should occur.
+  var isDiscretionary: Bool { get }
 
+}
+
+/// MARK: - Configuration
+
+extension FileProxyDelegate {
+  
+  var allowsCellularAccess: Bool { return false }
+  var isDiscretionary: Bool { return true }
+  
 }
 
 /// MARK: - Downloading

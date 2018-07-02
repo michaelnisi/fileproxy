@@ -45,12 +45,23 @@ public final class FileProxy: NSObject {
 
   private func makeBackgroundSession(identifier: SessionIdentifier) -> URLSession {
     precondition(!isInvalidated)
-    if #available(iOS 10.0, macOS 10.13, *) {
-      os_log("creating a new session: %{public}@", log: log, type: .debug,
-             identifier as CVarArg)
-    }
+    
     let conf = URLSessionConfiguration.background(withIdentifier: identifier)
-    conf.isDiscretionary = true
+    
+    conf.isDiscretionary = delegate?.isDiscretionary ?? true
+    conf.allowsCellularAccess = delegate?.allowsCellularAccess ?? false
+    
+    if #available(iOS 10.0, macOS 10.13, *) {
+      os_log("""
+        creating a new session: (
+          identifier: %{public}@,
+          isDiscretionary: %i,
+          allowsCellularAccess: %i
+        )
+        """, log: log, type: .debug,
+             identifier, conf.isDiscretionary, conf.allowsCellularAccess)
+    }
+    
     return URLSession(configuration: conf, delegate: self, delegateQueue: nil)
   }
 
@@ -168,6 +179,16 @@ extension FileProxy: URLSessionDownloadDelegate {
     guard let url = downloadTask.originalRequest?.url else {
       return
     }
+    
+    if let allowsCellularAccess = delegate?.allowsCellularAccess,
+      !allowsCellularAccess {
+      guard !session.configuration.allowsCellularAccess else {
+        // TODO: Resume download over Wi-Fi
+        downloadTask.cancel()
+        return
+      }
+    }
+    
     delegate?.proxy(
       self, url: url, didWriteData: bytesWritten,
       totalBytesWritten: totalBytesWritten,
