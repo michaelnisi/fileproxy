@@ -159,6 +159,14 @@ extension FileProxy: URLSessionTaskDelegate {
 // MARK: - URLSessionDownloadDelegate
 
 extension FileProxy: URLSessionDownloadDelegate {
+
+  private var allowsCellularAccess: Bool {
+    return delegate?.allowsCellularAccess ?? false
+  }
+  
+  private var isDiscretionary: Bool {
+    return delegate?.isDiscretionary ?? true
+  }
   
   private func checkSession(configuration: URLSessionConfiguration) -> Bool {
     guard configuration.allowsCellularAccess else {
@@ -179,12 +187,11 @@ extension FileProxy: URLSessionDownloadDelegate {
     }
     
     guard checkSession(configuration: session.configuration) else {
-      // Invalidating is rough, connection might not even be cellular at this
-      // moment. But for now, this makes a good use case for checking our
+      // Invalidating is rough, the connection might not even be cellular at the
+      // moment. But for now, this makes for a good use case for checking our
       // session invalidation handling.
       
-      // TODO: Ask delegate
-      
+      // TODO: Ask delegate before invalidating session
       session.invalidateAndCancel()
       return
     }
@@ -453,14 +460,6 @@ extension FileProxy: FileProxying {
     }
   }
   
-  var allowsCellularAccess: Bool {
-    return delegate?.allowsCellularAccess ?? false
-  }
-  
-  var isDiscretionary: Bool {
-    return delegate?.isDiscretionary ?? true
-  }
-  
   @discardableResult
   public func url(
     matching url: URL,
@@ -494,7 +493,7 @@ extension FileProxy: FileProxying {
         
         // Got session, but cellular access has been disallowed in the meantime.
         guard checkSession(configuration: s.configuration) else {
-          // TODO: Ask delegate
+          // TODO: Ask delegate before invalidating session
           s.invalidateAndCancel()
           
           let newID = "\(identifier)-\(UUID().uuidString)"
