@@ -37,15 +37,7 @@ public final class FileProxy: NSObject {
     self.delegate = delegate
   }
 
-  fileprivate var isInvalidated = false
-
-  deinit {
-    precondition(isInvalidated)
-  }
-
   private func makeBackgroundSession(identifier: SessionIdentifier) -> URLSession {
-    precondition(!isInvalidated)
-    
     let conf = URLSessionConfiguration.background(withIdentifier: identifier)
     
     conf.isDiscretionary = delegate?.isDiscretionary ?? true
@@ -124,11 +116,12 @@ extension FileProxy: URLSessionDelegate {
         os_log("invalid session", log: log, type: .error)
       }
     }
+    
     guard let sid = session.configuration.identifier else {
       fatalError("missing session identifier")
     }
+    
     completeSession(matching: sid)
-    isInvalidated = true
   }
 
   // Handling authentication challenges on the task level, not here, on the
@@ -145,9 +138,6 @@ extension FileProxy: URLSessionTaskDelegate {
     task: URLSessionTask,
     didCompleteWithError error: Error?
   ) {
-    guard !isInvalidated else {
-      return
-    }
     let url = task.originalRequest?.url
     delegate?.proxy(self, url: url, didCompleteWithError: error)
   }
@@ -169,6 +159,14 @@ extension FileProxy: URLSessionTaskDelegate {
 // MARK: - URLSessionDownloadDelegate
 
 extension FileProxy: URLSessionDownloadDelegate {
+  
+  private func checkSession(configuration: URLSessionConfiguration) -> Bool {
+    guard configuration.allowsCellularAccess else {
+      return true
+    }
+    
+    return allowsCellularAccess
+  }
 
   public func urlSession(
     _ session: URLSession,
@@ -180,13 +178,15 @@ extension FileProxy: URLSessionDownloadDelegate {
       return
     }
     
-    if let allowsCellularAccess = delegate?.allowsCellularAccess,
-      !allowsCellularAccess {
-      guard !session.configuration.allowsCellularAccess else {
-        // TODO: Resume download over Wi-Fi
-        downloadTask.cancel()
-        return
-      }
+    guard checkSession(configuration: session.configuration) else {
+      // Invalidating is rough, connection might not even be cellular at this
+      // moment. But for now, this makes a good use case for checking our
+      // session invalidation handling.
+      
+      // TODO: Ask delegate
+      
+      session.invalidateAndCancel()
+      return
     }
     
     delegate?.proxy(
@@ -396,8 +396,17 @@ extension FileProxy: FileProxying {
     }
   }
   
+  private static func notOnMain() {
+    guard #available(iOS 11.0, macOS 10.13, *),
+      ProcessInfo.processInfo.processName != "xctest" else {
+        return
+    }
+    
+    dispatchPrecondition(condition: .notOnQueue(.main))
+  }
+  
   public func localURL(matching url: URL) throws -> URL? {
-    // dispatchPrecondition(condition: .notOnQueue(.main))
+     FileProxy.notOnMain()
     
     guard let localURL = FileLocator(
       identifier: identifier, url: url)?.localURL else {
@@ -443,14 +452,22 @@ extension FileProxy: FileProxying {
       hasBlock(!tasks.isEmpty)
     }
   }
-
+  
+  var allowsCellularAccess: Bool {
+    return delegate?.allowsCellularAccess ?? false
+  }
+  
+  var isDiscretionary: Bool {
+    return delegate?.isDiscretionary ?? true
+  }
+  
   @discardableResult
   public func url(
     matching url: URL,
     start downloading: Bool = true,
     using configuration: DownloadTaskConfiguration? = nil
   ) throws -> URL {
-    // dispatchPrecondition(condition: .notOnQueue(.main))
+    FileProxy.notOnMain()
 
     if let localURL = try localURL(matching: url) {
       return localURL
@@ -464,13 +481,29 @@ extension FileProxy: FileProxying {
 
     func go() {
       let session: URLSession = {
-        guard let id = current, let s = sessions[id] else {
+        guard
+          let id = current,
+          let s = sessions[id]
+          else {
           let newID = "\(identifier)-\(UUID().uuidString)"
           let newSession = makeBackgroundSession(identifier: newID)
           sessions[newID] = newSession
           current = newID
           return newSession
         }
+        
+        // Got session, but cellular access has been disallowed in the meantime.
+        guard checkSession(configuration: s.configuration) else {
+          // TODO: Ask delegate
+          s.invalidateAndCancel()
+          
+          let newID = "\(identifier)-\(UUID().uuidString)"
+          let newSession = makeBackgroundSession(identifier: newID)
+          sessions[newID] = newSession
+          current = newID
+          return newSession
+        }
+        
         return s
       }()
 
