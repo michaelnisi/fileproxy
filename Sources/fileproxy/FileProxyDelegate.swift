@@ -112,12 +112,12 @@ extension FileProxyDelegate {
     totalBytesWritten: Int64,
     totalBytesExpectedToWrite: Int64) {
 //    os_log("""
-//      fileproxy: didWriteData: {
+//      fileproxy: didWriteData: (
 //        %{public}@
 //        bytesWritten: %i,
 //        totalBytesWritten: %i,
 //        totalBytesExpectedToWrite: %i"
-//      }
+//      )
 //      """, type: .debug, url as CVarArg,
 //           bytesWritten as CVarArg,
 //           totalBytesWritten as CVarArg,
