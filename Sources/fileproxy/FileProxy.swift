@@ -286,10 +286,10 @@ extension FileProxy: FileProxying {
     session: URLSession,
     for identifier: SessionIdentifier
   ) -> SessionIdentifier {
-    precondition(
-      sessions[identifier] == nil,
-      "unexpectedly found existing session: \(identifier)"
-    )
+    guard sessions[identifier] == nil else {
+      os_log("using existing session: %{public}@", log: log, identifier)
+      return identifier
+    }
     
     sessions[identifier] = session
     
