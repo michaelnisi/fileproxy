@@ -9,7 +9,7 @@ import Foundation
 import os.log
 
 @available(iOS 10.0, macOS 10.13, *)
-private let log = OSLog(subsystem: "ink.codes.fileproxy", category: "files")
+private let log = OSLog.disabled
 
 public final class FileProxy: NSObject {
 
