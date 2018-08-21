@@ -92,8 +92,8 @@ extension FileProxyDelegate {
   public func proxy(
     _ proxy: FileProxying, url: URL?, didCompleteWithError error: Error?) {
     if #available(iOS 11.0, macOS 10.12, *) {
-      os_log("fileproxy: didCompleteWithError: %{public}@",
-             type: .debug, String(describing: url))
+      os_log("fileproxy: didCompleteWithError: ( %{public}@, %{public}@ )",
+             type: .debug, String(describing: url), String(describing: error))
     }
   }
 
