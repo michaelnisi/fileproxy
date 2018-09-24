@@ -287,7 +287,11 @@ extension FileProxy: FileProxying {
     for identifier: SessionIdentifier
   ) -> SessionIdentifier {
     guard sessions[identifier] == nil else {
-      os_log("using existing session: %{public}@", log: log, identifier)
+      if #available(OSX 10.13, *) {
+        os_log("using existing session: %{public}@", log: log, identifier)
+      } else {
+        // Fallback on earlier versions
+      }
       return identifier
     }
     
@@ -395,7 +399,10 @@ extension FileProxy: FileProxying {
 
     guard
       let d = attributes[FileAttributeKey.modificationDate] as? Date,
-      (delegate?.validate(self, removing: url, modified: d))! else {
+      delegate?.validate(self, removing: url, modified: d) ?? false else {
+      if #available(iOS 10.0, macOS 10.13, *) {
+        os_log("not removing: %{public}@", log: log, url as CVarArg)
+      }
       return
     }
 
