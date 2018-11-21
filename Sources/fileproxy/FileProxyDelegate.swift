@@ -54,18 +54,18 @@ public protocol FileProxyDelegate: class {
 
 }
 
-/// MARK: - Configuration
+/// MARK: - Default Configuration
 
 extension FileProxyDelegate {
-  
   var allowsCellularAccess: Bool { return false }
   var isDiscretionary: Bool { return true }
-  
 }
 
 /// MARK: - Downloading
 
 extension FileProxyDelegate {
+
+  private var log: OSLog { return .disabled }
 
   public func proxy(
     _ proxy: FileProxying,
@@ -74,8 +74,8 @@ extension FileProxyDelegate {
     completionHandler: @escaping (
     URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
     if #available(iOS 11.0, macOS 10.12, *) {
-      os_log("fileproxy: default handling challenge: %{public}@",
-             type: .debug, url as CVarArg, challenge)
+      os_log("default handling challenge: %{public}@",
+             log: log, type: .debug, url as CVarArg, challenge)
     }
 
     completionHandler(.performDefaultHandling, nil)
@@ -84,24 +84,25 @@ extension FileProxyDelegate {
   public func proxy(
     _ proxy: FileProxying, url: URL, successfullyDownloadedTo location: URL) {
     if #available(iOS 11.0, macOS 10.12, *) {
-      os_log("fileproxy: successfullyDownloadedTo: %{public}@",
-             type: .debug, url as CVarArg)
+      os_log("successfullyDownloadedTo: %{public}@",
+             log: log, type: .debug, url as CVarArg)
     }
   }
 
   public func proxy(
     _ proxy: FileProxying, url: URL?, didCompleteWithError error: Error?) {
     if #available(iOS 11.0, macOS 10.12, *) {
-      os_log("fileproxy: didCompleteWithError: ( %{public}@, %{public}@ )",
-             type: .debug, String(describing: url), String(describing: error))
+      os_log("didCompleteWithError: ( %{public}@, %{public}@ )",
+             log: log, type: .debug,
+             String(describing: url), String(describing: error))
     }
   }
 
   public func proxy(
     _ proxy: FileProxying, url: URL, failedToDownloadWith error: Error) {
     if #available(iOS 11.0, macOS 10.12, *) {
-      os_log("fileproxy: failedToDownloadWith: %{public}@",
-             type: .debug, url as CVarArg)
+      os_log("failedToDownloadWith: %{public}@",
+             log: log, type: .debug, url as CVarArg)
     }
   }
 
