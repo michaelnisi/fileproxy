@@ -11,8 +11,7 @@ Motivated through [AVAsset](https://developer.apple.com/documentation/avfoundati
 
 ## Testing
 
-Using it in production, I know it works. I hope to add more tests ✌️
-For now you can run rudimentary tests with the [Package Manager](https://swift.org/package-manager/).
+Using it in production, I know it works. I hope to add more tests. For now, you can run rudimentary tests with the [Package Manager](https://swift.org/package-manager/).
 
 ```
 make test

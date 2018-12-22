@@ -40,10 +40,16 @@ public protocol FileProxying {
   /// A callback delegate.
   var delegate: FileProxyDelegate? { get set }
 
-  /// Handles events for background URL session matching `identifier`.
+  /// Handles events for background URL session matching `identifier`. Creates
+  /// sessions if necessary.
+  ///
+  /// - Parameters:
+  ///   - identifier: The session identifier.
+  ///   - completionBlock: The block to execute when all events for this session
+  /// have been handled.
   func handleEventsForBackgroundURLSession(
     identifier: String,
-    completionHandler: @escaping () -> Void
+    completionBlock: @escaping () -> Void
   )
 
   /// Returns a local file URL matching remote `url` if a file has been
@@ -87,11 +93,15 @@ public protocol FileProxying {
   /// Cancels download tasks matching `url`.
   func cancelDownloads(matching url: URL)
 
-  /// Invalidates all URL sessions used by this file proxy.
-  ///
-  /// - Parameters:
-  ///   - finishing: Pass `true` to finish current download tasks.
-  func invalidate(finishing: Bool)
+  /// Invalidates this file proxy and all its URL sessions, cancelling all
+  /// outstanding tasks.
+  func invalidate()
+
+  /// Activates this file proxy for use.
+  func activate()
+
+  /// Removes all but active background sessions.
+  func purge()
 
 }
 

@@ -38,12 +38,29 @@ class fileproxyTests: XCTestCase {
 
   }
 
+  var proxy: FileProxy!
+
+  override func setUp() {
+    super.setUp()
+
+    let proxy = FileProxy()
+    proxy.activate()
+
+    self.proxy = proxy
+  }
+
+  override func tearDown() {
+    proxy.invalidate()
+    super.tearDown()
+  }
+
   func testForRresolvableURL() {
     let exp = self.expectation(description: "url")
     exp.assertForOverFulfill = false
 
     let delegate = TestDelegate(expectation: exp)
-    let proxy = FileProxy(delegate: delegate)
+
+    proxy.delegate = delegate
 
     let url = URL(string: "http://localhost:8000/urandom")!
     let found = try! proxy.url(matching: url)
@@ -58,17 +75,14 @@ class fileproxyTests: XCTestCase {
       guard delegate.error == nil else {
         fatalError()
       }
-      let localURL = try! proxy.url(matching: url)
+      let localURL = try! self.proxy.url(matching: url)
       XCTAssert(localURL.isFileURL)
 
-      try! proxy.removeAll()
-
-      proxy.invalidate()
+      try! self.proxy.removeAll()
     }
   }
 
   func testRemoveAll() {
-    let proxy = FileProxy()
     try! proxy.removeAll()
   }
 

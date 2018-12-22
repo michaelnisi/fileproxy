@@ -32,6 +32,7 @@ struct FileLocator: Codable {
   private static func makeHash(url: URL) -> Int {
     let str = url.absoluteString
     let hash = djb2Hash(string: str)
+
     return hash
   }
 
