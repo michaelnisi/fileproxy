@@ -61,9 +61,6 @@ public final class FileProxy: NSObject {
   /// Stores our sessions.
   private var _sessionsByIds: [SessionIdentifier: Session]!
 
-  /// A backlog of unfulfilled download requests.
-  private var _backlog: [URL]!
-
   /// Creates a new file proxy.
   ///
   /// - Parameters:
@@ -214,7 +211,10 @@ extension FileProxy {
       let skip: Bool
     }
 
-    func find(_ sessions: [Session], _ acc: Acc = Acc(good: nil, unused: [], skip: false)) {
+    func find(
+      _ sessions: [Session],
+      _ acc: Acc = Acc(good: nil, unused: [], skip: false)
+    ) {
       guard let session = sessions.first else {
         os_log("found: %{public}@", log: log, type: .debug, String(describing: acc))
         sessionBlock(acc.good, acc.unused, acc.skip)
@@ -306,13 +306,6 @@ extension FileProxy {
     }
   }
 
-  private func appendToBacklog(_ url: URL) {
-    sQueue.sync {
-      _backlog.append(url)
-      os_log("appended to backlog: %{public}@", log: log, _backlog)
-    }
-  }
-
 }
 
 // MARK: - URLSessionDelegate
@@ -375,10 +368,6 @@ extension FileProxy: URLSessionTaskDelegate {
     didCompleteWithError error: Error?
   ) {
     precondition(!isInvalid)
-
-    if error != nil, let url = task.originalRequest?.url {
-      appendToBacklog(url)
-    }
 
     let url = task.originalRequest?.url
     delegate?.proxy(self, url: url, didCompleteWithError: error)
@@ -577,7 +566,6 @@ extension FileProxy: FileProxying {
   public func activate() {
     sQueue.sync {
       self._sessionsByIds = [SessionIdentifier: Session]()
-      self._backlog = [URL]()
     }
 
     isInvalid = false
@@ -601,8 +589,6 @@ extension FileProxy: FileProxying {
       for id in ids {
         _sessionsByIds.removeValue(forKey: id)
       }
-
-      _backlog.removeAll()
     }
   }
 
@@ -623,7 +609,6 @@ extension FileProxy: FileProxying {
       }
 
       _sessionsByIds.removeAll()
-      _backlog.removeAll()
     }
 
     _isInvalid = true
@@ -687,7 +672,7 @@ extension FileProxy: FileProxying {
   public func localURL(matching url: URL) throws -> URL? {
     precondition(!isInvalid)
     FileProxy.notOnMain()
-    
+
     guard let localURL = FileLocator(
       identifier: identifier, url: url)?.localURL else {
       throw FileProxyError.invalidURL(url)
