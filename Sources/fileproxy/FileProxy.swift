@@ -200,8 +200,9 @@ extension FileProxy {
     find(sessions)
   }
 
-  /// Finds a sessions `session` to download `url`, snooping for unused session
-  /// while at it.
+  /// Finds a session in `sessions` to download `url`, snooping out unused
+  /// sessions while being at it. This isn’t the cheapest asynchronous
+  /// operation.
   ///
   /// - Parameters:
   ///   - sessions: The sessions to scan.
