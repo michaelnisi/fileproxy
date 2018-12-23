@@ -96,14 +96,7 @@ public protocol FileProxying {
   /// Cancels download tasks matching `url`.
   func cancelDownloads(matching url: URL)
 
-  /// Invalidates this file proxy and all its URL sessions, cancelling all
-  /// outstanding tasks. After this, the file proxy is unusable.
-  func invalidate()
-
-  /// Activates this file proxy for use.
-  func activate()
-
-  /// Invalidates and removes all URL sessions.
+  /// Invalidates all URL sessions and removes them from this file proxy.
   func invalidateSessions()
 
 }

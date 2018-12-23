@@ -12,8 +12,12 @@ private let log = OSLog(subsystem: "ink.codes.fileproxy", category: "files")
 
 public final class FileProxy: NSObject {
 
+  /// Identifies sessions, equivalent to `URLSessionConfiguration.identifier`.
+  private typealias SessionIdentifier = String
+
   public let identifier: String
   public let maxBytes: Int
+  public let maxTasksPerSession: Int
 
   /// The file proxy delegate receives combined events of all background
   /// sessions currently managed by this file proxy.
@@ -23,8 +27,31 @@ public final class FileProxy: NSObject {
   /// get hairy.
   public weak var delegate: FileProxyDelegate?
 
-  /// Identifies sessions, equivalent to `URLSessionConfiguration.identifier`.
-  private typealias SessionIdentifier = String
+  /// Synchronizes access to sessions, handlers, and our invalidation flag.
+  private let sQueue: DispatchQueue
+
+  /// Creates a new file proxy.
+  ///
+  /// - Parameters:
+  ///   - identifier: The name of this file proxy.
+  ///   - maxBytes: The maximum bytes to consume for local storage.
+  ///   - maxTasksPerSession: The maximum number of tasks per URL session.
+  ///   - delegate: The file proxy delegate.
+  public init(
+    identifier: String = "ink.codes.fileproxy",
+    maxBytes: Int = 256 * 1024 * 1024,
+    maxTasksPerSession: Int = 16,
+    delegate: FileProxyDelegate? = nil
+  ) {
+    os_log("initializing: %{public}@", log: log, type: .debug, identifier)
+
+    self.identifier = identifier
+    self.maxBytes = maxBytes
+    self.maxTasksPerSession = maxTasksPerSession
+    self.delegate = delegate
+
+    self.sQueue = DispatchQueue(label: identifier)
+  }
 
   /// Wraps our url session, adding context for letting us know if the session
   /// was created to handle events for a background url session. A `.transient`
@@ -45,6 +72,15 @@ public final class FileProxy: NSObject {
       }
     }
 
+    var identifier: SessionIdentifier {
+      switch self {
+      case .background(let id, _, _):
+        return id
+      case .transient(let id, _):
+        return id
+      }
+    }
+
     func downloadTask(with url: URL) -> URLSessionDownloadTask {
       switch self {
       case .background(_, let s, _):
@@ -55,43 +91,8 @@ public final class FileProxy: NSObject {
     }
   }
 
-  /// Synchronizes access to sessions, handlers, and our invalidation flag.
-  private let sQueue: DispatchQueue
-
-  /// Stores our sessions.
-  private var _sessionsByIds: [SessionIdentifier: Session]!
-
-  /// Creates a new file proxy.
-  ///
-  /// - Parameters:
-  ///   - identifier: The name of this file proxy.
-  ///   - maxBytes: The maximum bytes to consume for local storage.
-  ///   - delegate: The file proxy delegate.
-  public init(
-    identifier: String = "ink.codes.fileproxy",
-    maxBytes: Int = 256 * 1024 * 1024,
-    delegate: FileProxyDelegate? = nil
-  ) {
-    os_log("initializing: %{public}@", log: log, type: .debug, identifier)
-
-    self.identifier = identifier
-    self.maxBytes = maxBytes
-    self.delegate = delegate
-
-    self.sQueue = DispatchQueue(label: identifier)
-  }
-
-  private var _isInvalid: Bool = true
-
-  /// After this is `true`, this object is trash and cannot be used any longer.
-  private var isInvalid: Bool {
-    get { return sQueue.sync { _isInvalid } }
-    set { sQueue.sync { _isInvalid = newValue } }
-  }
-
-  deinit {
-    precondition(_isInvalid)
-  }
+  /// Stores our sessions by identifiers.
+  private lazy var _sessionsByIds = [SessionIdentifier: Session]()
 
 }
 
@@ -126,35 +127,36 @@ extension FileProxy {
     return .background(identifier, s, cb)
   }
 
-  /// Removes the session matching `identifier`.
-  @discardableResult
-  private func removeSession(matching identifier: SessionIdentifier) -> Session? {
+  /// Invalidates and removes sessions matching `identifiers`.
+  private func removeSessions(matching identifiers: [SessionIdentifier]) {
     return sQueue.sync {
-      guard let session = _sessionsByIds.removeValue(forKey: identifier) else {
-        return nil
-      }
+      for identifier in identifiers {
+        guard let session = _sessionsByIds.removeValue(forKey: identifier) else {
+          continue
+        }
 
-      switch session {
-      case .background(let id, let s, let completionBlock):
-        os_log("invalidating background session: %{public}@", log: log, id)
-        s.invalidateAndCancel()
-        completionBlock()
-      case .transient(let id, let s):
-        os_log("invalidating transient session: %{public}@", log: log, id)
-        s.invalidateAndCancel()
+        switch session {
+        case .background(let id, let s, let completionBlock):
+          os_log("invalidating background session: %{public}@", log: log, id)
+          s.invalidateAndCancel()
+          completionBlock()
+        case .transient(let id, let s):
+          os_log("invalidating transient session: %{public}@", log: log, id)
+          s.invalidateAndCancel()
+        }
       }
-
-      return session
     }
   }
 
   /// Adds `session` for `identifier`.
   ///
   /// Adding an existing session is a mistake.
-  private func addSession(_ session: Session, identifier: SessionIdentifier) {
-    sQueue.sync {
-      precondition(_sessionsByIds[identifier] == nil)
-      _sessionsByIds[identifier] = session
+  @discardableResult
+  private func addSession(_ session: Session) -> Session {
+    return sQueue.sync {
+      precondition(_sessionsByIds[session.identifier] == nil)
+      _sessionsByIds[session.identifier] = session
+      return session
     }
   }
 
@@ -207,6 +209,7 @@ extension FileProxy {
   /// - Parameters:
   ///   - sessions: The sessions to scan.
   ///   - url: The URL to download with one of the sessions.
+  ///   - maximumTasksCount: The maximum number of tasks per URL session.
   ///   - sessionsBlock: The block to execute with the result.
   ///   - identifier: The identifier of the suggested session to use.
   ///   - unused: Identifiers of currently unused sessions.
@@ -217,6 +220,7 @@ extension FileProxy {
   private static func findSession(
     in sessions: [Session],
     for url: URL,
+    allowing maximumTasksCount: Int,
     sessionBlock: @escaping (
       _ identifier: SessionIdentifier?,
       _ unused: [SessionIdentifier],
@@ -258,7 +262,7 @@ extension FileProxy {
           // The session should not exceed the maximum number of tasks.
           // Relatively high maxmimum, for Apple documentation recommending
           // ideally one session per app.
-          guard tasks.count < 128 else {
+          guard tasks.count < maximumTasksCount else {
             find(Array(sessions.dropFirst()), acc)
             return
           }
@@ -296,10 +300,9 @@ extension FileProxy {
   private func selectSession(
     for url: URL,
     sessionBlock: @escaping (Session?) -> Void) {
-    FileProxy.findSession(in: sessions, for: url) { identifier, unused, skip in
-      for trash in unused {
-        self.removeSession(matching: trash)
-      }
+    FileProxy.findSession(in: sessions, for: url, allowing: maxTasksPerSession) {
+      identifier, unused, skip in
+      self.removeSessions(matching: unused)
 
       guard !skip else {
         return sessionBlock(nil)
@@ -308,8 +311,7 @@ extension FileProxy {
       guard let id = identifier else {
         let newId = self.makeSessionIdentifier()
         let newSession = self.makeSession(identifier: newId)
-        self.addSession(newSession, identifier: newId)
-        return sessionBlock(newSession)
+        return sessionBlock(self.addSession(newSession))
       }
 
       sessionBlock(self.session(matching: id))
@@ -339,8 +341,6 @@ extension FileProxy: URLSessionDelegate {
   public func urlSessionDidFinishEvents(
     forBackgroundURLSession session: URLSession
   ) {
-    precondition(!isInvalid)
-
     os_log("session did finish events: %{public}@",
            log: log, type: .debug, session.configuration.identifier!)
 
@@ -349,7 +349,7 @@ extension FileProxy: URLSessionDelegate {
       return
     }
 
-    removeSession(matching: identifier)
+    removeSessions(matching: [identifier])
   }
 
   #endif
@@ -358,8 +358,6 @@ extension FileProxy: URLSessionDelegate {
     _ session: URLSession,
     didBecomeInvalidWithError error: Error?
   ) {
-    precondition(!isInvalid)
-
     if let er = error {
       os_log("invalid session with error: %{public}@",
              log: log, type: .error, er as CVarArg)
@@ -372,7 +370,7 @@ extension FileProxy: URLSessionDelegate {
       return
     }
     
-    removeSession(matching: identifier)
+    removeSessions(matching: [identifier])
   }
 
   // Handling authentication challenges on the task level, not here, on the
@@ -389,8 +387,6 @@ extension FileProxy: URLSessionTaskDelegate {
     task: URLSessionTask,
     didCompleteWithError error: Error?
   ) {
-    precondition(!isInvalid)
-
     let url = task.originalRequest?.url
     delegate?.proxy(self, url: url, didCompleteWithError: error)
   }
@@ -400,8 +396,6 @@ extension FileProxy: URLSessionTaskDelegate {
     task: URLSessionTask,
     didReceive challenge: URLAuthenticationChallenge,
     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-    precondition(!isInvalid)
-
     let url = task.originalRequest?.url
 
     delegate?.proxy(
@@ -445,17 +439,14 @@ extension FileProxy: URLSessionDownloadDelegate {
     didWriteData bytesWritten: Int64,
     totalBytesWritten: Int64,
     totalBytesExpectedToWrite: Int64) {
-    precondition(!isInvalid)
-
     guard let url = downloadTask.originalRequest?.url else {
       return
     }
     
     guard checkSession(configuration: session.configuration) else {
       if let identifier = session.configuration.identifier {
-        removeSession(matching: identifier)
+        removeSessions(matching: [identifier])
       }
-
       return
     }
     
@@ -470,8 +461,6 @@ extension FileProxy: URLSessionDownloadDelegate {
     _ session: URLSession,
     downloadTask: URLSessionDownloadTask,
     didFinishDownloadingTo location: URL) {
-    precondition(!isInvalid)
-
     guard
       let origin = downloadTask.originalRequest?.url,
       let locator = FileLocator(identifier: identifier, url: origin),
@@ -585,17 +574,7 @@ extension FileProxy {
 
 extension FileProxy: FileProxying {
 
-  public func activate() {
-    sQueue.sync {
-      self._sessionsByIds = [SessionIdentifier: Session]()
-    }
-
-    isInvalid = false
-  }
-
   public func invalidateSessions() {
-    precondition(!isInvalid)
-
     sQueue.sync {
       let ids: [SessionIdentifier] = _sessionsByIds.compactMap {
         switch $0.value {
@@ -616,44 +595,18 @@ extension FileProxy: FileProxying {
       }
     }
   }
-
-  public func invalidate() {
-    precondition(!isInvalid)
-
-    sQueue.sync {
-      for s in _sessionsByIds {
-        switch s.value {
-        case .background(let id, let s, let cb):
-          os_log("invalidating background session: %{public}@", log: log, id)
-          s.invalidateAndCancel()
-          cb()
-        case .transient(let id, let s):
-          os_log("invalidating transient session: %{public}@", log: log, id)
-          s.invalidateAndCancel()
-        }
-      }
-
-      _sessionsByIds.removeAll()
-    }
-
-    _isInvalid = true
-  }
   
   public func handleEventsForBackgroundURLSession(
     identifier: String,
     completionBlock: @escaping () -> Void
   ) {
-    precondition(!isInvalid)
-
     if session(matching: identifier) == nil {
       let s = makeSession(identifier: identifier, completionBlock: completionBlock)
-      addSession(s, identifier: identifier)
+      addSession(s)
     }
   }
 
   public func cancelDownloads(matching url: URL) {
-    precondition(!isInvalid)
-
     FileProxy.tasks(in: urlSessions, matching: url) { tasks in
       for task in tasks {
         task.cancel()
@@ -662,8 +615,6 @@ extension FileProxy: FileProxying {
   }
 
   public func removeFile(matching url: URL) -> URL? {
-    precondition(!isInvalid)
-
     guard let localURL = FileLocator(
       identifier: identifier, url: url)?.localURL else {
       return nil
@@ -679,8 +630,6 @@ extension FileProxy: FileProxying {
   }
   
   public func removeAll() throws {
-    precondition(!isInvalid)
-
     for url in try ls() {
       try remove(url)
     }
@@ -695,7 +644,6 @@ extension FileProxy: FileProxying {
   }
   
   public func localURL(matching url: URL) throws -> URL? {
-    precondition(!isInvalid)
     FileProxy.notOnMain()
 
     guard let localURL = FileLocator(
@@ -715,8 +663,6 @@ extension FileProxy: FileProxying {
   }
 
   public func removeAll(keeping urls: [URL]) throws {
-    precondition(!isInvalid)
-
     let preserved = try urls.compactMap { try localURL(matching: $0) }
 
     for url in Set(try ls()).subtracting(preserved) {
@@ -740,7 +686,6 @@ extension FileProxy: FileProxying {
     start downloading: Bool = true,
     using configuration: DownloadTaskConfiguration? = nil
   ) throws -> URL {
-    precondition(!isInvalid)
     FileProxy.notOnMain()
 
     if let localURL = try localURL(matching: url) {
@@ -761,14 +706,14 @@ extension FileProxy: FileProxying {
       let checkedSession: Session = {
         // Got session, but cellular access has been disallowed in the meantime.
         guard self.checkSession(configuration: s.configuration) else {
-          self.removeSession(matching: s.configuration.identifier!)
+          if let identifier = s.configuration.identifier {
+            self.removeSessions(matching: [identifier])
+          }
 
           let newID = self.makeSessionIdentifier()
           let newSession = self.makeSession(identifier: newID)
 
-          self.addSession(newSession, identifier: newID)
-
-          return newSession
+          return self.addSession(newSession)
         }
 
         return s
