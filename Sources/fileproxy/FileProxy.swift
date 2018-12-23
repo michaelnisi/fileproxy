@@ -126,6 +126,7 @@ extension FileProxy {
     return .background(identifier, s, cb)
   }
 
+  /// Removes the session matching `identifier`.
   @discardableResult
   private func removeSession(matching identifier: SessionIdentifier) -> Session? {
     return sQueue.sync {
@@ -149,7 +150,7 @@ extension FileProxy {
 
   /// Adds `session` for `identifier`.
   ///
-  /// Traps if a session with that identifier already exists.
+  /// Adding an existing session is a mistake.
   private func addSession(_ session: Session, identifier: SessionIdentifier) {
     sQueue.sync {
       precondition(_sessionsByIds[identifier] == nil)
@@ -177,6 +178,7 @@ extension FileProxy {
     }
   }
 
+  /// Finds download tasks matching `url` in `sessions`.
   private static func tasks(
     in sessions: [URLSession],
     matching url: URL,
@@ -198,10 +200,27 @@ extension FileProxy {
     find(sessions)
   }
 
+  /// Finds a sessions `session` to download `url`, snooping for unused session
+  /// while at it.
+  ///
+  /// - Parameters:
+  ///   - sessions: The sessions to scan.
+  ///   - url: The URL to download with one of the sessions.
+  ///   - sessionsBlock: The block to execute with the result.
+  ///   - identifier: The identifier of the suggested session to use.
+  ///   - unused: Identifiers of currently unused sessions.
+  ///   - skip: `true` if the URL is already being downloaded by another task.
+  ///
+  /// All in one loop for effective monitoring and maximum control. With the
+  /// current settings, in most cases, we end up using one or two sessions.
   private static func findSession(
     in sessions: [Session],
     for url: URL,
-    sessionBlock: @escaping (SessionIdentifier?, [SessionIdentifier], Bool) -> Void
+    sessionBlock: @escaping (
+      _ identifier: SessionIdentifier?,
+      _ unused: [SessionIdentifier],
+      _ skip: Bool
+    ) -> Void
   ) {
     os_log("finding in %i sessions", log: log, type: .debug, sessions.count)
 
@@ -236,6 +255,8 @@ extension FileProxy {
           }
 
           // The session should not exceed the maximum number of tasks.
+          // Relatively high maxmimum, for Apple documentation recommending
+          // ideally one session per app.
           guard tasks.count < 128 else {
             find(Array(sessions.dropFirst()), acc)
             return
@@ -571,14 +592,17 @@ extension FileProxy: FileProxying {
     isInvalid = false
   }
 
-  public func purge() {
+  public func invalidateSessions() {
     precondition(!isInvalid)
 
     sQueue.sync {
       let ids: [SessionIdentifier] = _sessionsByIds.compactMap {
         switch $0.value {
-        case .background:
-          return nil
+        case .background(let id, let s, let cb):
+          os_log("invalidating background session: %{public}@", log: log, id)
+          s.invalidateAndCancel()
+          cb()
+          return id
         case .transient(let id, let s):
           os_log("invalidating transient session: %{public}@", log: log, id)
           s.invalidateAndCancel()

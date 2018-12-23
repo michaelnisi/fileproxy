@@ -47,6 +47,9 @@ public protocol FileProxying {
   ///   - identifier: The session identifier.
   ///   - completionBlock: The block to execute when all events for this session
   /// have been handled.
+  ///
+  /// Use this method from your `UIApplicationDelegate`:
+  /// `application(_:handleEventsForBackgroundURLSession:completionHandler:)`
   func handleEventsForBackgroundURLSession(
     identifier: String,
     completionBlock: @escaping () -> Void
@@ -94,14 +97,14 @@ public protocol FileProxying {
   func cancelDownloads(matching url: URL)
 
   /// Invalidates this file proxy and all its URL sessions, cancelling all
-  /// outstanding tasks.
+  /// outstanding tasks. After this, the file proxy is unusable.
   func invalidate()
 
   /// Activates this file proxy for use.
   func activate()
 
-  /// Removes all but active background sessions.
-  func purge()
+  /// Invalidates and removes all URL sessions.
+  func invalidateSessions()
 
 }
 
