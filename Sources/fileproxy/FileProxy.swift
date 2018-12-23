@@ -274,7 +274,7 @@ extension FileProxy {
             return
           }
 
-          // Keep looking…
+          // That’s a good one.
           find(
             Array(sessions.dropFirst()),
             Acc(good: id, unused: acc.unused, skip: acc.skip)
