@@ -127,6 +127,30 @@ extension FileProxy {
     return .background(identifier, s, cb)
   }
 
+  /// Returns `true` if a transient session matching `identifier` has been
+  /// upgraded to a background session.
+  ///
+  /// An existing background session is a mistake.
+  private func upgradeSession(
+    matching identifier: SessionIdentifier,
+    completionBlock: @escaping () -> Void
+  ) -> Bool {
+    return sQueue.sync {
+      guard let existing = _sessionsByIds[identifier] else {
+        return false
+      }
+
+      switch existing {
+      case .background:
+        fatalError("unexpected background session")
+      case .transient(_, let s):
+        os_log("upgrading to background session: %{public}@", log: log, identifier)
+        _sessionsByIds[identifier] = .background(identifier, s, completionBlock)
+        return true
+      }
+    }
+  }
+
   /// Invalidates and removes sessions matching `identifiers`.
   private func removeSessions(matching identifiers: [SessionIdentifier]) {
     return sQueue.sync {
@@ -345,8 +369,7 @@ extension FileProxy: URLSessionDelegate {
            log: log, type: .debug, session.configuration.identifier!)
 
     guard let identifier = session.configuration.identifier else {
-      os_log("ignoring unidentified session", log: log)
-      return
+      fatalError("unidentified session")
     }
 
     removeSessions(matching: [identifier])
@@ -358,16 +381,11 @@ extension FileProxy: URLSessionDelegate {
     _ session: URLSession,
     didBecomeInvalidWithError error: Error?
   ) {
-    if let er = error {
-      os_log("invalid session with error: %{public}@",
-             log: log, type: .error, er as CVarArg)
-    } else {
-      os_log("invalid session", log: log, type: .error)
-    }
+    os_log("invalid session with error: %{public}@",
+           log: log, error as CVarArg? ?? "none")
 
     guard let identifier = session.configuration.identifier else {
-      os_log("ignoring unidentified session", log: log)
-      return
+      fatalError("unidentified session")
     }
     
     removeSessions(matching: [identifier])
@@ -544,15 +562,15 @@ extension FileProxy {
 
   private func remove(_ url: URL) throws {
     let fm = FileManager.default
-
     let attributes = try fm.attributesOfItem(atPath: url.path)
 
     guard
       let d = attributes[FileAttributeKey.modificationDate] as? Date,
       delegate?.validate(self, removing: url, modified: d) ?? false else {
-      os_log("not removing: %{public}@", log: log, url as CVarArg)
       return
     }
+
+    os_log("removing: %{public}@", log: log, url as CVarArg)
 
     try fm.removeItem(at: url)
   }
@@ -600,10 +618,15 @@ extension FileProxy: FileProxying {
     identifier: String,
     completionBlock: @escaping () -> Void
   ) {
-    if session(matching: identifier) == nil {
-      let s = makeSession(identifier: identifier, completionBlock: completionBlock)
-      addSession(s)
+    guard !upgradeSession(
+      matching: identifier,
+      completionBlock: completionBlock
+    ) else {
+      return
     }
+
+    let s = makeSession(identifier: identifier, completionBlock: completionBlock)
+    addSession(s)
   }
 
   public func cancelDownloads(matching url: URL) {
