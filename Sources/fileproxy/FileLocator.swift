@@ -23,6 +23,7 @@ struct FileLocator: Codable {
 
   private static func djb2Hash(string: String) -> Int {
     let unicodeScalars = string.unicodeScalars.map { $0.value }
+
     return Int(unicodeScalars.reduce(5381) {
       ($0 << 5) &+ $0 &+ Int($1)
     })
@@ -40,6 +41,7 @@ struct FileLocator: Codable {
     guard !url.isFileURL else {
       return nil
     }
+
     self.identifier = identifier
     self.fileID = FileLocator.makeHash(url: url)
     self.url = url
@@ -50,8 +52,11 @@ struct FileLocator: Codable {
     let parent: URL? = try {
       #if os(iOS)
         return try FileManager.default.url(
-            for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil,
-            create: false)
+          for: .cachesDirectory,
+          in: .userDomainMask,
+          appropriateFor: nil,
+          create: true
+        )
       #elseif os(macOS)
         guard #available(macOS 10.12, *) else {
           throw FileProxyError.targetRequired
