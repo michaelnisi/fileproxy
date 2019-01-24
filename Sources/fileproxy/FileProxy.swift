@@ -127,10 +127,10 @@ extension FileProxy {
     return .background(identifier, s, cb)
   }
 
-  /// Returns `true` if a transient session matching `identifier` has been
-  /// upgraded to a background session.
+  /// Returns `true` existing session matching `identifier` has been upgraded
+  /// for use as background session with that `completionBlock`.
   ///
-  /// An existing background session is a mistake.
+  /// Not sure if executing existing completion blocks is helpful at all.
   private func upgradeSession(
     matching identifier: SessionIdentifier,
     completionBlock: @escaping () -> Void
@@ -141,8 +141,12 @@ extension FileProxy {
       }
 
       switch existing {
-      case .background:
-        fatalError("unexpected background session")
+      case .background(_, let s, let existingCompletionBlock):
+        existingCompletionBlock()
+
+        os_log("unexpected background session: %{public}@", log: log, identifier)
+        _sessionsByIds[identifier] = .background(identifier, s, completionBlock)
+        return true
       case .transient(_, let s):
         os_log("upgrading to background session: %{public}@", log: log, identifier)
         _sessionsByIds[identifier] = .background(identifier, s, completionBlock)
