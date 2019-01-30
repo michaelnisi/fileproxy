@@ -44,13 +44,14 @@ class fileproxyTests: XCTestCase {
     super.setUp()
 
     let proxy = FileProxy()
-    proxy.activate()
 
     self.proxy = proxy
   }
 
   override func tearDown() {
-    proxy.invalidate()
+    try! proxy.removeAll()
+    proxy.invalidateSessions()
+
     super.tearDown()
   }
 
