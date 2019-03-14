@@ -17,12 +17,6 @@ Using it in production, I know it works. I hope to add more tests. For now, you 
 make test
 ```
 
-Testing within Xcode, you’d have to start the server manually first.
-
-```
-node server
-```
-
 ## License
 
 [MIT](https://raw.github.com/michaelnisi/fileproxy/master/LICENSE)
