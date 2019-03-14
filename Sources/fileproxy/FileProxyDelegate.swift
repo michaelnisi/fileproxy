@@ -58,14 +58,14 @@ public protocol FileProxyDelegate: class {
 
 // MARK: - Default Configuration
 
-extension FileProxyDelegate {
+public extension FileProxyDelegate {
   var allowsCellularAccess: Bool { return false }
   var isDiscretionary: Bool { return true }
 }
 
 // MARK: - Sufficient Defaults for Downloading
 
-extension FileProxyDelegate {
+public extension FileProxyDelegate {
 
   public func proxy(
     _ proxy: FileProxying,
