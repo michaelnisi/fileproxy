@@ -105,9 +105,9 @@ struct FileLocator: Codable {
 // MARK: - Hashable
 
 extension FileLocator: Hashable {
-
-  public var hashValue: Int {
-    return fileID
+  
+  func hash(into hasher: inout Hasher) {
+    hasher.combine(fileID)
   }
 
   public static func ==(lhs: FileLocator, rhs: FileLocator) -> Bool {

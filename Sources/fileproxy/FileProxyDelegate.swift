@@ -67,7 +67,7 @@ public extension FileProxyDelegate {
 
 public extension FileProxyDelegate {
 
-  public func proxy(
+    func proxy(
     _ proxy: FileProxying,
     url: URL,
     didReceive challenge: URLAuthenticationChallenge,
@@ -79,26 +79,26 @@ public extension FileProxyDelegate {
     completionHandler(.performDefaultHandling, nil)
   }
 
-  public func proxy(
+    func proxy(
     _ proxy: FileProxying, url: URL, successfullyDownloadedTo location: URL) {
     os_log("successfullyDownloadedTo: %{public}@",
            log: log, type: .debug, url as CVarArg)
   }
 
-  public func proxy(
+  func proxy(
     _ proxy: FileProxying, url: URL?, didCompleteWithError error: Error?) {
     os_log("didCompleteWithError: ( %{public}@, %{public}@ )",
            log: log, type: .debug,
            String(describing: url), String(describing: error))
   }
 
-  public func proxy(
+  func proxy(
     _ proxy: FileProxying, url: URL, failedToDownloadWith error: Error) {
     os_log("failedToDownloadWith: %{public}@",
            log: log, type: .debug, url as CVarArg)
   }
 
-  public func proxy(
+  func proxy(
     _ proxy: FileProxying,
     url: URL,
     didWriteData bytesWritten: Int64,

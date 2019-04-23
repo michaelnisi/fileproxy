@@ -1,9 +1,11 @@
-// swift-tools-version:4.2
-
+// swift-tools-version:5.0
 import PackageDescription
 
 let package = Package(
   name: "fileproxy",
+  platforms: [
+    .iOS(.v11), .macOS(.v10_13)
+  ],
   products: [
     .library(
       name: "fileproxy",
@@ -18,6 +20,5 @@ let package = Package(
     .testTarget(
       name: "fileproxyTests",
       dependencies: ["fileproxy"]),
-    ],
-  swiftLanguageVersions: [.v4_2]
+  ]
 )
