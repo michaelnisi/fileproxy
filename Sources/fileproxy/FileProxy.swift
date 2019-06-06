@@ -50,7 +50,7 @@ public final class FileProxy: NSObject {
     self.maxTasksPerSession = maxTasksPerSession
     self.delegate = delegate
 
-    self.sQueue = DispatchQueue(label: identifier)
+    self.sQueue = DispatchQueue(label: identifier, target: .global())
   }
 
   /// Wraps our url session, adding context for letting us know if the session
