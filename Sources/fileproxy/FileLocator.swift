@@ -10,7 +10,7 @@ import Foundation
 typealias FileID = Int
 typealias RemoteURL = URL
 
-/// Locates one file.
+/// Locates a file mapping between remote and local URL.
 struct FileLocator: Codable {
 
   /// A naiive hash of the remote URL to identify the file.
@@ -46,7 +46,6 @@ struct FileLocator: Codable {
     self.fileID = FileLocator.makeHash(url: url)
     self.url = url
   }
-
 
   static func targetDirectory(identifier: String) throws -> URL {
     let parent: URL? = try {
@@ -113,5 +112,4 @@ extension FileLocator: Hashable {
   public static func ==(lhs: FileLocator, rhs: FileLocator) -> Bool {
     return lhs.fileID == rhs.fileID
   }
-
 }

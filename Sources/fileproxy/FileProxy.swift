@@ -8,7 +8,7 @@
 import Foundation
 import os.log
 
-private let log = OSLog.disabled
+private let log = OSLog(subsystem: "ink.codes.fileproxy", category: "proxy")
 
 public final class FileProxy: NSObject {
 
@@ -34,7 +34,7 @@ public final class FileProxy: NSObject {
   ///
   /// - Parameters:
   ///   - identifier: The name of this file proxy.
-  ///   - maxBytes: The maximum bytes to consume for local storage.
+  ///   - maxBytes: The maximum bytes allowed to consume for local storage.
   ///   - maxTasksPerSession: The maximum number of tasks per URL session.
   ///   - delegate: The file proxy delegate.
   public init(
@@ -43,7 +43,7 @@ public final class FileProxy: NSObject {
     maxTasksPerSession: Int = 16,
     delegate: FileProxyDelegate? = nil
   ) {
-    os_log("initializing: %{public}@", log: log, type: .debug, identifier)
+    os_log("initializing: %{public}@", log: log, type: .info, identifier)
 
     self.identifier = identifier
     self.maxBytes = maxBytes
@@ -93,7 +93,6 @@ public final class FileProxy: NSObject {
 
   /// Stores our sessions by identifiers.
   private lazy var _sessionsByIds = [SessionIdentifier: Session]()
-
 }
 
 // MARK: - Accessing Sessions
@@ -115,7 +114,7 @@ extension FileProxy {
         isDiscretionary: %i,
         allowsCellularAccess: %i
       )
-      """, log: log, type: .debug,
+      """, log: log, type: .info,
            identifier, conf.isDiscretionary, conf.allowsCellularAccess)
 
     let s = URLSession(configuration: conf, delegate: self, delegateQueue: nil)
@@ -144,12 +143,18 @@ extension FileProxy {
       case .background(_, let s, let existingCompletionBlock):
         existingCompletionBlock()
 
-        os_log("unexpected background session: %{public}@", log: log, identifier)
+        os_log("unexpected background session: %{public}@", 
+               log: log, identifier)
+        
         _sessionsByIds[identifier] = .background(identifier, s, completionBlock)
+        
         return true
       case .transient(_, let s):
-        os_log("upgrading to background session: %{public}@", log: log, identifier)
+        os_log("upgrading to background session: %{public}@", 
+               log: log, identifier)
+        
         _sessionsByIds[identifier] = .background(identifier, s, completionBlock)
+        
         return true
       }
     }
@@ -178,12 +183,15 @@ extension FileProxy {
 
   /// Adds `session` for `identifier`.
   ///
-  /// Adding an existing session is a mistake.
+  /// Adding an existing session is a programming error.
   @discardableResult
   private func addSession(_ session: Session) -> Session {
     return sQueue.sync {
-      precondition(_sessionsByIds[session.identifier] == nil)
+      precondition(_sessionsByIds[session.identifier] == nil, 
+                   "session identifier exists")
+      
       _sessionsByIds[session.identifier] = session
+      
       return session
     }
   }
@@ -255,7 +263,7 @@ extension FileProxy {
       _ skip: Bool
     ) -> Void
   ) {
-    os_log("finding in %i sessions", log: log, type: .debug, sessions.count)
+    os_log("finding in %i sessions", log: log, type: .info, sessions.count)
 
     struct Acc {
       let good: SessionIdentifier?
@@ -268,8 +276,9 @@ extension FileProxy {
       _ acc: Acc = Acc(good: nil, unused: [], skip: false)
     ) {
       guard let session = sessions.first else {
-        os_log("found: %{public}@", log: log, type: .debug, String(describing: acc))
+        os_log("found: %{public}@", log: log, type: .info, String(describing: acc))
         sessionBlock(acc.good, acc.unused, acc.skip)
+        
         return
       }
 
@@ -284,6 +293,7 @@ extension FileProxy {
               Array(sessions.dropFirst()),
               Acc(good: acc.good, unused: acc.unused, skip: true)
             )
+            
             return
           }
 
@@ -292,6 +302,7 @@ extension FileProxy {
           // ideally one session per app.
           guard tasks.count < maximumTasksCount else {
             find(Array(sessions.dropFirst()), acc)
+            
             return
           }
 
@@ -304,6 +315,7 @@ extension FileProxy {
                 ? acc :
                 Acc(good: acc.good, unused: acc.unused + [id], skip: acc.skip)
             )
+            
             return
           }
 
@@ -339,6 +351,7 @@ extension FileProxy {
       guard let id = identifier else {
         let newId = self.makeSessionIdentifier()
         let newSession = self.makeSession(identifier: newId)
+        
         return sessionBlock(self.addSession(newSession))
       }
 
@@ -357,7 +370,6 @@ extension FileProxy {
       _sessionsByIds[identifier]
     }
   }
-
 }
 
 // MARK: - URLSessionDelegate
@@ -370,7 +382,7 @@ extension FileProxy: URLSessionDelegate {
     forBackgroundURLSession session: URLSession
   ) {
     os_log("session did finish events: %{public}@",
-           log: log, type: .debug, session.configuration.identifier!)
+           log: log, type: .info, session.configuration.identifier!)
 
     guard let identifier = session.configuration.identifier else {
       fatalError("unidentified session")
@@ -395,9 +407,8 @@ extension FileProxy: URLSessionDelegate {
     removeSessions(matching: [identifier])
   }
 
-  // Handling authentication challenges on the task level, not here, on the
+  // Handling authentication challenges on the task level, not here on the
   // session level.
-
 }
 
 // MARK: - URLSessionTaskDelegate
@@ -409,8 +420,21 @@ extension FileProxy: URLSessionTaskDelegate {
     task: URLSessionTask,
     didCompleteWithError error: Error?
   ) {
-    let url = task.originalRequest?.url
-    delegate?.proxy(self, url: url, didCompleteWithError: error)
+    let requestUrl = task.originalRequest?.url
+    
+    if let url = requestUrl {
+      if let er = error {
+        os_log("download error: ( %{public}@, %{public}@ )", 
+               log: log, type: .error, url as CVarArg, er as CVarArg)
+      } else {
+        os_log("download complete: %{public}@", 
+               log: log, type: .info, url as CVarArg)
+      }
+    } else {
+      os_log("missing original request", log: log)
+    }
+    
+    delegate?.proxy(self, url: requestUrl, didCompleteWithError: error)
   }
 
   public func urlSession(
@@ -425,7 +449,6 @@ extension FileProxy: URLSessionTaskDelegate {
       completionHandler: completionHandler
     )
   }
-
 }
 
 // MARK: - URLSessionDownloadDelegate
@@ -469,6 +492,7 @@ extension FileProxy: URLSessionDownloadDelegate {
       if let identifier = session.configuration.identifier {
         removeSessions(matching: [identifier])
       }
+      
       return
     }
     
@@ -488,21 +512,24 @@ extension FileProxy: URLSessionDownloadDelegate {
       let locator = FileLocator(identifier: identifier, url: origin),
       let savedURL = locator.localURL else {
       delegate?.proxy(self, url: nil, didCompleteWithError: nil)
+        
       return
     }
 
     guard let res = downloadTask.response as? HTTPURLResponse  else {
       os_log("no reponse: %{public}@",
-             log: log, type: .debug, downloadTask as CVarArg)
+             log: log, type: .info, downloadTask as CVarArg)
+      
       return
     }
 
     guard (200...299).contains(res.statusCode) else {
-      os_log("unexpected response: (%i, %{public}@)",
+      os_log("unexpected response: ( %i, %{public}@ )",
              log: log, res.statusCode, origin as CVarArg)
 
       delegate?.proxy(self, url: origin,
         failedToDownloadWith: FileProxyError.http(res.statusCode))
+      
       return
     }
 
@@ -512,7 +539,7 @@ extension FileProxy: URLSessionDownloadDelegate {
         %{public}@,
         %{public}@
       )
-      """, log: log, type: .debug,
+      """, log: log, type: .info,
            origin as CVarArg,
            downloadTask as CVarArg,
            savedURL as CVarArg
@@ -523,11 +550,10 @@ extension FileProxy: URLSessionDownloadDelegate {
       delegate?.proxy(self, url: origin, successfullyDownloadedTo: savedURL)
     } catch {
       delegate?.proxy(self, url: origin, failedToDownloadWith: error)
+      
       return
     }
-
   }
-
 }
 
 // MARK: - Managing Files
@@ -574,7 +600,7 @@ extension FileProxy {
       return
     }
 
-    os_log("removing: %{public}@", log: log, url as CVarArg)
+    os_log("removing: %{public}@", log: log, type: .info, url as CVarArg)
 
     try fm.removeItem(at: url)
   }
@@ -589,7 +615,6 @@ extension FileProxy {
       options: .skipsHiddenFiles
     ).map { $0.standardizedFileURL }
   }
-
 }
 
 // MARK: - FileProxying
@@ -604,10 +629,12 @@ extension FileProxy: FileProxying {
           os_log("invalidating background session: %{public}@", log: log, id)
           s.invalidateAndCancel()
           cb()
+          
           return id
         case .transient(let id, let s):
           os_log("invalidating transient session: %{public}@", log: log, id)
           s.invalidateAndCancel()
+          
           return id
         }
       }
@@ -683,7 +710,7 @@ extension FileProxy: FileProxying {
         return localURL.standardizedFileURL
       }
     } catch {
-      os_log("no such file", log: log, type: .debug)
+      os_log("no such file", log: log, type: .info)
     }
     
     return nil
@@ -763,7 +790,7 @@ extension FileProxy: FileProxying {
           %{public}@,
           %{public}@
         )
-        """, log: log, type: .debug, url as CVarArg, task as CVarArg)
+        """, log: log, type: .info, url as CVarArg, task as CVarArg)
 
       task.resume()
     }
@@ -781,5 +808,4 @@ extension FileProxy: FileProxying {
   public func url(matching url: URL) throws -> URL {
     return try self.url(matching: url, using: nil)
   }
-
 }

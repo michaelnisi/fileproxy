@@ -26,7 +26,7 @@ public struct DownloadTaskConfiguration {
 }
 
 /// Blurs the line between local and remote files with long-running nonurgent
-/// transfers.
+/// transfers. FileProxying enables users to just stream.
 public protocol FileProxying {
 
   /// Identifies this proxy.
@@ -98,7 +98,4 @@ public protocol FileProxying {
 
   /// Invalidates all URL sessions and removes them from this file proxy.
   func invalidateSessions()
-
 }
-
-

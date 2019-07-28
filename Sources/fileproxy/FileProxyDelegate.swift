@@ -53,7 +53,6 @@ public protocol FileProxyDelegate: class {
   
   /// Gives the system control over when transfers should occur.
   var isDiscretionary: Bool { get }
-
 }
 
 // MARK: - Default Configuration
@@ -73,13 +72,13 @@ public extension FileProxyDelegate {
     didReceive challenge: URLAuthenticationChallenge,
     completionHandler: @escaping (
     URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-    os_log("default handling challenge: %{public}@",
+    os_log("didReceive challenge: %{public}@",
            log: log, type: .debug, url as CVarArg, challenge)
 
     completionHandler(.performDefaultHandling, nil)
   }
 
-    func proxy(
+  func proxy(
     _ proxy: FileProxying, url: URL, successfullyDownloadedTo location: URL) {
     os_log("successfullyDownloadedTo: %{public}@",
            log: log, type: .debug, url as CVarArg)
@@ -87,15 +86,16 @@ public extension FileProxyDelegate {
 
   func proxy(
     _ proxy: FileProxying, url: URL?, didCompleteWithError error: Error?) {
-    os_log("didCompleteWithError: ( %{public}@, %{public}@ )",
-           log: log, type: .debug,
+    os_log("didCompleteWithError: %{public}@", 
+           log: log, type: .debug, 
            String(describing: url), String(describing: error))
   }
 
   func proxy(
     _ proxy: FileProxying, url: URL, failedToDownloadWith error: Error) {
-    os_log("failedToDownloadWith: %{public}@",
-           log: log, type: .debug, url as CVarArg)
+    os_log("failedToDownloadWith: ( %{public}@, %{public}@ )",
+           log: log, type: .debug,
+           String(describing: url), String(describing: error))
   }
 
   func proxy(
@@ -104,20 +104,21 @@ public extension FileProxyDelegate {
     didWriteData bytesWritten: Int64,
     totalBytesWritten: Int64,
     totalBytesExpectedToWrite: Int64) {
-//    os_log("""
-//      fileproxy: didWriteData: (
-//        %{public}@
-//        bytesWritten: %i,
-//        totalBytesWritten: %i,
-//        totalBytesExpectedToWrite: %i"
-//      )
-//      """, type: .debug, url as CVarArg,
-//           bytesWritten as CVarArg,
-//           totalBytesWritten as CVarArg,
-//           totalBytesExpectedToWrite as CVarArg
-//    )
+    os_log("""
+      fileproxy: didWriteData: (
+        %{public}@
+        bytesWritten: %i,
+        totalBytesWritten: %i,
+        totalBytesExpectedToWrite: %i"
+      )
+      """,
+           log: log,
+           type: .debug, url as CVarArg,
+           bytesWritten as CVarArg,
+           totalBytesWritten as CVarArg,
+           totalBytesExpectedToWrite as CVarArg
+    )
   }
-
 }
 
 // MARK: - Disallowing Deletions by Default
@@ -127,5 +128,4 @@ extension FileProxyDelegate {
   func validate(_ proxy: FileProxying, removing url: URL, modified: Date) -> Bool {
     return false
   }
-  
 }
