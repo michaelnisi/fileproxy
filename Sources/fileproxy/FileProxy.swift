@@ -8,7 +8,7 @@
 import Foundation
 import os.log
 
-private let log = OSLog(subsystem: "ink.codes.fileproxy", category: "proxy")
+private let log = OSLog(subsystem: "ink.codes.fileproxy", category: "fs")
 
 public final class FileProxy: NSObject {
 
@@ -427,10 +427,11 @@ extension FileProxy: URLSessionTaskDelegate {
     
     if let url = requestUrl {
       if let er = error {
-        os_log("download error: ( %{public}@, %{public}@ )", 
-               log: log, type: .error, url as CVarArg, er as CVarArg)
+        os_log("client-side error: ( %{public}@, %{public}@ )",
+               log: log, type: .error,
+               url.host ?? "unknown host" as CVarArg, er as CVarArg)
       } else {
-        os_log("download complete: %{public}@", 
+        os_log("download complete: %{public}@",
                log: log, type: .info, url as CVarArg)
       }
     } else {
