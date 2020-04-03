@@ -11,7 +11,7 @@ Motivated through [AVAsset](https://developer.apple.com/documentation/avfoundati
 
 ## Background
 
-Working with background downloads, keep this paragraph from Apple’s documentation in mind:
+Working with background downloads, keep this paragraph from [Apple’s documentation](https://developer.apple.com/documentation/foundation/url_loading_system/downloading_files_in_the_background) in mind:
 
 > As a result, if your app starts a single background download, gets resumed when the download completes, and then starts a new download, it will greatly increase the delay. Instead, use a small number of background sessions — ideally just one — and use these sessions to start many download tasks at once. This allows the system to perform multiple downloads at once, and resume your app when they have completed.
 
