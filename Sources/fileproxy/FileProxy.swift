@@ -362,7 +362,11 @@ extension FileProxy {
     }
   }
 
-  private func hasSession(matching identifier: SessionIdentifier) -> Bool {
+  private func hasSession(matching configuration: URLSessionConfiguration) -> Bool {
+    guard let identifier = configuration.identifier else {
+      return false
+    }
+
     return sQueue.sync {
       _sessionsByIds[identifier] != nil
     }
@@ -467,13 +471,10 @@ extension FileProxy: URLSessionDownloadDelegate {
     return delegate?.isDiscretionary ?? true
   }
 
-  /// Returns `true` if the session doesn’t allow cellular access or, for
-  /// sessions allowing cellular access, it returns `true` if the file proxy
-  /// allows cellular access.
-  ///
-  /// In other words, cellular sessions can be blocked by the delegate.
   private func checkSession(configuration: URLSessionConfiguration) -> Bool {
-    precondition(hasSession(matching: configuration.identifier!))
+    guard hasSession(matching: configuration) else {
+      return false
+    }
     
     guard configuration.allowsCellularAccess else {
       return true
