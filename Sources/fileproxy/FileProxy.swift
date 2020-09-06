@@ -575,7 +575,8 @@ extension FileProxy {
         let values = try url.resourceValues(forKeys: [.fileSizeKey])
 
         guard let fileSize = values.fileSize else {
-          throw FileProxyError.fileSizeRequired
+          os_log("skipping file size: %{public}@", log: log, type: .error, url as CVarArg)
+          return acc
         }
 
         return acc + fileSize

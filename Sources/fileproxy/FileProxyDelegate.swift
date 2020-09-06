@@ -73,7 +73,7 @@ public extension FileProxyDelegate {
     completionHandler: @escaping (
     URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
     os_log("didReceive challenge: %{public}@",
-           log: log, type: .debug, url as CVarArg, challenge)
+           log: log, type: .info, url as CVarArg, challenge)
 
     completionHandler(.performDefaultHandling, nil)
   }
@@ -81,20 +81,20 @@ public extension FileProxyDelegate {
   func proxy(
     _ proxy: FileProxying, url: URL, successfullyDownloadedTo location: URL) {
     os_log("successfullyDownloadedTo: %{public}@",
-           log: log, type: .debug, url as CVarArg)
+           log: log, type: .info, url as CVarArg)
   }
 
   func proxy(
     _ proxy: FileProxying, url: URL?, didCompleteWithError error: Error?) {
     os_log("didCompleteWithError: %{public}@", 
-           log: log, type: .debug, 
+           log: log, type: .info, 
            String(describing: url), String(describing: error))
   }
 
   func proxy(
     _ proxy: FileProxying, url: URL, failedToDownloadWith error: Error) {
     os_log("failedToDownloadWith: ( %{public}@, %{public}@ )",
-           log: log, type: .debug,
+           log: log, type: .info,
            String(describing: url), String(describing: error))
   }
 
@@ -113,7 +113,7 @@ public extension FileProxyDelegate {
       )
       """,
            log: log,
-           type: .debug, url as CVarArg,
+           type: .info, url as CVarArg,
            bytesWritten as CVarArg,
            totalBytesWritten as CVarArg,
            totalBytesExpectedToWrite as CVarArg
