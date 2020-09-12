@@ -1,6 +1,6 @@
 import XCTest
-@testable import fileproxyTests
+@testable import FileProxyTests
 
 XCTMain([
-    testCase(fileproxyTests.allTests),
+    testCase(FileProxyTests.allTests),
 ])

@@ -1,7 +1,7 @@
 import XCTest
-@testable import fileproxy
+@testable import FileProxy
 
-class fileproxyTests: XCTestCase {
+class FileProxyTests: XCTestCase {
 
   class TestDelegate: FileProxyDelegate {
 

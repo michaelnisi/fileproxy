@@ -2,23 +2,23 @@
 import PackageDescription
 
 let package = Package(
-  name: "fileproxy",
+  name: "FileProxy",
   platforms: [
     .iOS(.v11), .macOS(.v10_13)
   ],
   products: [
     .library(
-      name: "fileproxy",
-      targets: ["fileproxy"]),
+      name: "FileProxy",
+      targets: ["FileProxy"]),
     ],
   dependencies: [
   ],
   targets: [
     .target(
-      name: "fileproxy",
+      name: "FileProxy",
       dependencies: []),
     .testTarget(
-      name: "fileproxyTests",
-      dependencies: ["fileproxy"]),
+      name: "FileProxyTests",
+      dependencies: ["FileProxy"]),
   ]
 )
