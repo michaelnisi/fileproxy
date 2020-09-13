@@ -25,6 +25,10 @@ This package is hardened by production. Additionally, you can run rudimentary te
 make test
 ```
 
+## Install
+
+📦 Add `https://github.com/michaelnisi/fileproxy` to your package dependencies.
+
 ## License
 
 [MIT](https://raw.github.com/michaelnisi/fileproxy/master/LICENSE)
